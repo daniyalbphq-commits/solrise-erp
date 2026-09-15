@@ -2,12 +2,12 @@
 
 Everything you must have **before** the first `terraform init` and **before** the
 first Ansible run. Read the two checklists in order; the ordering matters because
-the image has to exist in ECR before Ansible deploys.
+the image has to exist in the registry before Ansible deploys.
 
 The intended flow:
 
 ```
-terraform apply  ->  GitHub Actions builds + pushes image to ECR  ->  ansible-playbook pulls it
+terraform apply  ->  GitHub Actions builds + pushes image to Docker Hub  ->  ansible-playbook pulls it
 ```
 
 ---
@@ -17,20 +17,20 @@ terraform apply  ->  GitHub Actions builds + pushes image to ECR  ->  ansible-pl
 | # | Item | Needed by | Where it goes |
 |---|------|-----------|---------------|
 | 1 | AWS account (billing enabled) | Terraform | — |
-| 2 | AWS region chosen | Terraform, CI, host | `terraform.tfvars`, GitHub `AWS_REGION` |
+| 2 | AWS region chosen | Terraform, host | `terraform.tfvars`, `AWS_REGION` on the host |
 | 3 | AWS credentials for the Terraform principal | Terraform | `AWS_PROFILE` / env / SSO |
 | 4 | EC2 SSH key pair (public key, or existing key name) | Terraform | `tfvars: ssh_public_key` / `key_name` |
 | 5 | Domain name + ACME email | Terraform, host | `tfvars: domain`, `letsencrypt_email` |
-| 6 | GitHub repo slug (`owner/name`) for OIDC | Terraform | `tfvars: github_repository` |
-| 7 | Route 53 hosted zone ID (optional) | Terraform | `tfvars: route53_zone_id` |
-| 8 | GitHub repository secrets/variables | CI | repo settings (after `apply`) |
+| 6 | Docker Hub account + image repository | CI | `daniyalbphq/solrise` (or set `CUSTOM_IMAGE`) |
+| 7 | Docker Hub access token | CI | GitHub secret `DOCKERHUB_TOKEN` |
+| 8 | Route 53 hosted zone ID (optional) | Terraform | `tfvars: route53_zone_id` |
 | 9 | AWS credentials on the Ansible control node | Ansible | `AWS_PROFILE` / env |
 | 10 | SSH **private** key | Ansible | `~/.ssh/...` |
 | 11 | Ansible Vault password | Ansible | `--ask-vault-pass` |
-| 12 | Image already pushed to ECR | Ansible | produced by CI |
+| 12 | Image already pushed to Docker Hub | Ansible | produced by CI |
 
-Items **1–7** must exist before `terraform apply` (and therefore before `init`
-in practice). Items **8–12** must exist before `ansible-playbook`.
+Items **1–8** must exist before `terraform apply` (and therefore before `init`
+in practice). Items **9–12** must exist before `ansible-playbook`.
 
 ---
 
@@ -51,14 +51,15 @@ in practice). Items **8–12** must exist before `ansible-playbook`.
 
 ### GitHub
 - A GitHub account/organisation with **Actions enabled** on the repo that holds
-  this project. Actions → General → Workflow permissions may need
-  "Read and write" only if you later commit artifacts; the OIDC flow here does
-  not.
-- The repository that holds the **custom app** (`apps.json` → `SOLRISE_APP_URL`).
-  If it is private, you need a token for the build (see §5).
-- If your organisation restricts OIDC, the repo must be allowed to use
-  `id-token: write`. This is enabled per-workflow in
-  `.github/workflows/build-image.yml`.
+  this project (`daniyalbphq-commits/solrise-erp`).
+- A **Docker Hub account** with access to the image repository CI pushes to
+  (`<DOCKERHUB_USERNAME>/solrise` unless you override `CUSTOM_IMAGE`), plus an
+  access token for the workflow — see §4.
+- The repository that holds the **custom app**, if `apps.json` references
+  `${SOLRISE_APP_URL}`. If it is private, the build needs a token for it (see
+  §4); the app list shipped here does not use it, so this is optional.
+- No AWS OIDC setup is required for the image build: CI authenticates to Docker
+  Hub, not to AWS.
 
 ### DNS
 - A domain you control. Either a **Route 53 hosted zone** in the same account
@@ -74,11 +75,12 @@ So you know you are *not* missing anything for these:
 
 | Resource | Purpose |
 |---|---|
-| ECR repository | image registry that GitHub Actions pushes to |
-| GitHub OIDC provider + CI role | lets Actions assume an AWS role with **no static keys** |
 | RDS master password (Secrets Manager) | AWS-generated and rotated; never in a `.tfvars` or Vault |
-| EC2 IAM role / instance profile | allows the host to pull from ECR and read the secret |
-| VPC, subnets, security groups, Elastic IP, Route 53 record, S3 backup bucket | infrastructure |
+| EC2 IAM role / instance profile | lets the host read that secret, reach S3 and (optionally) pull from ECR |
+| S3 media bucket (+ bucket policy, versioning, lifecycle) | uploaded files, so they are not on the EC2 volume |
+| S3 backup bucket | off-box copy of the database dumps |
+| VPC, subnets, security groups, Elastic IP, Route 53 record | infrastructure |
+| ECR repository, GitHub OIDC provider + CI role | **optional** - only for the ECR image path; CI pushes to Docker Hub by default |
 
 ---
 
@@ -107,8 +109,10 @@ aws sts get-caller-identity                 # must succeed before you continue
 | `key_name` | `my-existing-key` | alternative to `ssh_public_key` |
 | `ssh_private_key_path` | `~/.ssh/id_ed25519` | written into the Ansible inventory |
 | `ssh_cidr_blocks` | `["203.0.113.4/32"]` | lock SSH to your egress IP |
-| `github_repository` | `acme/solrise-app` | enables the CI role |
-| `github_oidc_branch` | `refs/heads/main` | only this ref may push |
+| `enable_media_bucket` | `true` | S3 bucket for uploaded files (see `docs/15-s3-media-storage.md`) |
+| `enable_ecr` | `false` | not needed: CI pushes to Docker Hub |
+| `github_repository` | `acme/solrise-erp` | only needed for the optional OIDC/ECR path |
+| `github_oidc_branch` | `refs/heads/main` | only this ref may push (optional path) |
 | `create_github_oidc_provider` | `true` | set `false` if the account already has one |
 | `route53_zone_id` | `Z0123...` | optional; omit to manage DNS yourself |
 | `db_engine_version` / `db_parameter_group_family` | `11.4` / `mariadb11.4` | verify both are offered in your region |
@@ -141,40 +145,91 @@ terraform apply
 Record these outputs — you need them next:
 
 ```bash
-terraform output github_actions_role_arn
-terraform output ecr_repository_url
 terraform output app_public_ip
 terraform output rds_endpoint
 terraform output db_secret_arn
+terraform output media_bucket      # empty when enable_media_bucket = false
 ```
+
+Only for the optional ECR path: `terraform output ecr_repository_url` and
+`terraform output github_actions_role_arn`.
 
 ---
 
-## 4. Before the image can be built (GitHub repository settings)
+## 4. Before the image can be built (Docker Hub + GitHub repository settings)
 
-Set these in **Settings → Secrets and variables → Actions**.
+GitHub Actions builds the image and pushes it to Docker Hub. Two secrets are all
+it needs.
 
-### Repository **variables** (not secret)
-| Name | Value | Source |
+### 4.1 Create the Docker Hub access token
+
+Do **not** use your Docker Hub account password: use an access token, so it can
+be revoked on its own and scoped to push/pull only.
+
+1. Sign in at <https://hub.docker.com> as the account/org that will own the image
+   (here: **`daniyalbphq`** — the same account as `docker.io/daniyalbphq/solrise`
+   in `infra/ansible/group_vars/all/main.yml`).
+2. Make sure the image repository exists:
+   **Repositories → Create repository** → name `solrise`, visibility *Public*
+   (a public repo lets the host pull without credentials; keep it private if you
+   prefer, then also set the Vault credentials in §3/§5).
+3. **Account Settings → Personal access tokens → Generate new token**
+   (direct link: <https://hub.docker.com/settings/security>):
+   - Description: `github-actions-solrise-erp`
+   - Access permissions: **Read & Write** (add *Delete* only if you want CI to be
+     able to remove tags)
+   - Expiration: 90 days is a reasonable default; calendar the renewal
+4. **Generate** → **Copy** the token (`dckr_pat_...`). It is shown once.
+
+### 4.2 Add them to GitHub
+
+Repository → **Settings → Secrets and variables → Actions → Secrets → New
+repository secret** (the repository must already exist on GitHub):
+
+| Secret | Value |
+|---|---|
+| `DOCKERHUB_USERNAME` | `daniyalbphq` (the account that owns the token) |
+| `DOCKERHUB_TOKEN` | the `dckr_pat_...` token from §4.1 |
+| `SOLRISE_APP_URL` | *optional*: `https://x-access-token:<PAT>@github.com/<owner>/<app>` — only if `apps.json` references `${SOLRISE_APP_URL}` and that repo is private |
+
+Or with the `gh` CLI from a clone of the repo:
+
+```bash
+gh secret set DOCKERHUB_USERNAME --body daniyalbphq \
+  --repo daniyalbphq-commits/solrise-erp
+gh secret set DOCKERHUB_TOKEN --body "dckr_pat_xxxxxxxx" \
+  --repo daniyalbphq-commits/solrise-erp
+gh secret list --repo daniyalbphq-commits/solrise-erp   # verify: names only, never values
+```
+
+The workflow reads them as `secrets.DOCKERHUB_USERNAME` / `secrets.DOCKERHUB_TOKEN`,
+logs in with `docker/login-action`, then runs `scripts/build-image.sh` and
+`scripts/push-image.sh`.
+
+### 4.3 Optional repository **variables** (defaults are built in)
+
+Set these only to change the defaults; without them the workflow pushes
+`docker.io/<DOCKERHUB_USERNAME>/solrise:version-15`.
+
+| Variable | Default | Notes |
 |---|---|---|
-| `AWS_REGION` | `us-east-1` | your choice |
-| `AWS_ROLE_ARN` | `arn:aws:iam::<acct>:role/<prefix>-github-actions` | `terraform output github_actions_role_arn` |
-| `ECR_REPOSITORY_URL` | `<acct>.dkr.ecr.<region>.amazonaws.com/solrise/erpnext` | `terraform output ecr_repository_url` |
-| `CUSTOM_TAG` | e.g. `version-15` | **must match** `custom_tag` in `infra/ansible/group_vars/all/main.yml` |
+| `CUSTOM_IMAGE` | `docker.io/<DOCKERHUB_USERNAME>/solrise` | another namespace or a private registry |
+| `CUSTOM_TAG` | `version-15` | **must match** `custom_tag` in `infra/ansible/group_vars/all/main.yml` |
 | `FRAPPE_BRANCH` | `version-15` | must match `frappe_branch` on the host |
-| `SOLRISE_APP_BRANCH` | `version-15` | branch of the custom app |
+| `SOLRISE_APP_BRANCH` | `version-15` | branch of the custom app, when used |
 
-### Repository **secret**
-| Name | Value | Notes |
-|---|---|---|
-| `SOLRISE_APP_URL` | `https://x-access-token:<PAT>@github.com/acme/solrise_erp` | needed only if the custom app repo is private; the PAT needs `repo` read. It is consumed only inside the build and never printed. |
+`gh variable set CUSTOM_TAG --body version-15 --repo daniyalbphq-commits/solrise-erp`
+works the same way.
 
-The workflow also reads `CUSTOM_TAG` (variable) and an optional `workflow_dispatch`
-`tag` input.
+> **Keep the tag in sync.** CI's effective image+tag and the host's
+> `custom_image`/`custom_tag` must be identical, or `podman pull` on the host
+> fetches an old (or missing) image.
 
-> **One-time account note:** if `create_github_oidc_provider = false`, the existing
-> provider's trust policy must already allow `token.actions.githubusercontent.com`
-> with audience `sts.amazonaws.com`.
+> **Optional ECR path:** if you would rather keep images in AWS, leave
+> `custom_image` empty in `group_vars/all/main.yml`, set `github_repository` in
+> `terraform.tfvars`, and restore the OIDC/ECR steps in
+> `.github/workflows/build-image.yml` from git history. Docker Hub is the
+default and needs no AWS credentials.
 
 ---
 
@@ -242,13 +297,33 @@ ansible-vault encrypt group_vars/all/vault.yml
 ```
 Keep the vault password itself in your password manager / CI secret store.
 
-### 5.5 The image must already be in ECR
+The same file holds the **Docker Hub** credentials the host uses to `podman
+login` before pulling. They are optional for a *public* image, and worth setting
+anyway: authenticated pulls are not subject to Docker Hub's anonymous rate
+limits. Reuse the token from §4.1.
+
+```yaml
+dockerhub_username: "daniyalbphq"
+dockerhub_password: "dckr_pat_..."    # personal access token, not the password
+```
+
+### 5.5 The image must already be in Docker Hub
 Ansible **pulls**; it does not build by default. Trigger the build first:
 
 ```bash
 gh workflow run build-image.yml -f tag=version-15     # or push to main
 gh run watch
 ```
+
+Then confirm the image is there — the workflow summary prints the exact
+reference, and Docker Hub shows it under **Repositories → solrise → Tags**:
+
+```bash
+gh run list --workflow build-image.yml --limit 3
+```
+
+If the image is private, also set the Vault credentials in §5.4 so the host can
+log in before pulling.
 
 (Or build and push from your workstation — see §6.)
 
@@ -265,20 +340,16 @@ ansible-playbook site.yml --ask-vault-pass
 If you would rather build locally and push by hand:
 
 ```bash
-export AWS_PROFILE=my-terraform-profile
-export AWS_REGION=us-east-1
-ECR=$(terraform -chdir=infra/terraform output -raw ecr_repository_url)
+# log in with the access token from §4.1
+printf '%s\n' "$DOCKERHUB_TOKEN" | podman login --username daniyalbphq --password-stdin docker.io
 
-aws ecr get-login-password --region "$AWS_REGION" \
-  | podman login --username AWS --password-stdin "${ECR%%/*}"
-
-# .env: CUSTOM_IMAGE="$ECR", CUSTOM_TAG=version-15, SOLRISE_APP_URL=..., FRAPPE_BRANCH=version-15
+# .env: CUSTOM_IMAGE=docker.io/daniyalbphq/solrise, CUSTOM_TAG=version-15,
+#       FRAPPE_BRANCH=version-15, CONTAINER_ENGINE=podman
 make image
 ./scripts/push-image.sh
 ```
 
-Your own principal needs `ecr:GetAuthorizationToken` plus the push actions in
-§7 (`Ecr`).
+No AWS credentials are involved: the push goes to Docker Hub with the token.
 
 ---
 
@@ -416,14 +487,18 @@ works for a first bring-up but is not recommended for ongoing use.
 
 ## 8. Hygiene
 
-- **No static AWS keys in GitHub.** The CI role is assumed via OIDC; the only
-  long-lived secret in GitHub is `SOLRISE_APP_URL` (a scoped PAT), and only when
-  the custom app is private.
+- **No long-lived registry password.** CI authenticates to Docker Hub with a
+  scoped access token (`DOCKERHUB_TOKEN`), never the account password, and the
+  host uses a token too. Revoke a token to cut off a deployment.
+- **No static AWS keys in GitHub.** The image build does not touch AWS at all.
+  The only optional AWS-related secret is `SOLRISE_APP_URL` (a scoped GitHub PAT)
+  when the custom app repo is private.
 - **No DB password anywhere in your config.** RDS rotates it in Secrets Manager;
   the host reads it through its instance role, the control node through the
   policy in §5.2.
 - **Encrypt the vault file** and keep the vault password out of the repo.
 - **Restrict `ssh_cidr_blocks`** to your egress IP; prefer SSM Session Manager
   (`terraform output ssm_start_session_command`) over opening SSH at all.
-- **Keep tags in sync.** `CUSTOM_TAG` (GitHub) and `custom_tag` (Ansible) must
-  match, and both must match what the workflow pushed, or `podman pull` fails.
+- **Keep tags in sync.** CI's effective `CUSTOM_IMAGE:CUSTOM_TAG` and the host's
+  `custom_image`/`custom_tag` must match, or `podman pull` fetches an old (or
+  missing) image.

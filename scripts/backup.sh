@@ -17,6 +17,11 @@ DEST="${OUT}/${STAMP}"
 mkdir -p "${DEST}"
 
 log "dumping ${SITE_NAME} (database + public/private files) ..."
+if [ -n "${S3_MEDIA_BUCKET:-}" ]; then
+  log "note: uploaded files live in s3://${S3_MEDIA_BUCKET} - this archive carries the"
+  log "      database and whatever is still on the volume; the bucket (versioned) is"
+  log "      what protects media. See docs/15-s3-media-storage.md"
+fi
 compose exec -T backend bench --site "${SITE_NAME}" backup --with-files
 
 log "streaming dumps out of the sites volume ..."

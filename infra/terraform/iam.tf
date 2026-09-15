@@ -5,6 +5,7 @@
 #   * ECR pull     - pull the pre-built image when enable_ecr is set
 #   * CloudWatch   - metrics/logs agent
 #   * S3           - file backups
+#   * S3           - uploaded files/media (the media bucket)
 #   * Secrets Mgmt - read the RDS-managed master password at deploy time
 # =============================================================================
 
@@ -101,6 +102,40 @@ resource "aws_iam_role_policy" "backups" {
           "s3:DeleteObject",
         ]
         Resource = ["${aws_s3_bucket.backups[0].arn}/*"]
+      },
+    ]
+  })
+}
+
+# --- S3 media (uploaded files) -----------------------------------------------
+# The app talks S3 directly from the containers, using the instance profile via
+# the default boto3 credential chain (no keys anywhere). `GetBucketLocation` and
+# `ListBucket` are what the SDK asks for first; object access is scoped to this
+# bucket only, and no ACL actions are needed (the bucket ignores ACLs).
+resource "aws_iam_role_policy" "media" {
+  count = var.enable_media_bucket ? 1 : 0
+
+  name = "${local.name}-media"
+  role = aws_iam_role.ec2.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ListMediaBucket"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
+        Resource = [aws_s3_bucket.media[0].arn]
+      },
+      {
+        Sid    = "ReadWriteDeleteMediaObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+        ]
+        Resource = ["${aws_s3_bucket.media[0].arn}/*"]
       },
     ]
   })

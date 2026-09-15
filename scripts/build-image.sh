@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Build the Solrise image: Frappe + the platform + HRMS baked in from apps.json.
 #
-# frappe_docker's *layered* Containerfile installs the apps listed in apps.json,
-# passed as a BuildKit SECRET (never a build arg) so private-repo tokens cannot
-# leak into image layer metadata.
+# Two stages, both driven from here:
+#   1. frappe_docker's *layered* Containerfile - the apps listed in apps.json,
+#      passed as a BuildKit SECRET (never a build arg) so private-repo tokens
+#      cannot leak into image layer metadata. Tagged <image>:<tag>-apps.
+#   2. infra/image/Containerfile - the Solrise layer on top of it (S3/media
+#      support). Tagged <image>:<tag>, which is what gets pushed and deployed.
 #
 # FRAPPE_BRANCH selects both the frappe/base and frappe/build base images AND the
 # branch `bench init` checks out, so the toolchain (python/node) always matches
@@ -86,7 +89,11 @@ PY
 CACHE_BUST_VALUE="$(python3 "${ROOT_DIR}/scripts/apps-fingerprint.py" "${APPS_FILE}")"
 echo "[solrise] cache-bust=${CACHE_BUST_VALUE:0:12}"
 
-echo "[solrise] building ${CUSTOM_IMAGE}:${CUSTOM_TAG} (FRAPPE_BRANCH=${FRAPPE_BRANCH})"
+# --- stage 1: frappe + the apps ----------------------------------------------
+# The result is an intermediate tag: stage 2 layers the Solrise changes on it.
+APPS_TAG="${CUSTOM_IMAGE}:${CUSTOM_TAG}-apps"
+
+echo "[solrise] building ${APPS_TAG} (FRAPPE_BRANCH=${FRAPPE_BRANCH})"
 # Podman resolves `--secret src=` relative to the CURRENT WORKING DIRECTORY, not
 # the build context. Building from the repo root (which also contains an
 # apps.json) silently bakes the WRONG app list, so build from inside the context.
@@ -97,9 +104,24 @@ cd "${FD_DIR}"
   --build-arg "FRAPPE_IMAGE_PREFIX=${FRAPPE_IMAGE_PREFIX:-docker.io/frappe}" \
   --build-arg "CACHE_BUST=${CACHE_BUST:-${CACHE_BUST_VALUE}}" \
   --secret "id=apps_json,src=apps.json" \
-  --tag "${CUSTOM_IMAGE}:${CUSTOM_TAG}" \
+  --tag "${APPS_TAG}" \
   --file "images/layered/Containerfile" \
   "${FD_DIR}"
+
+# --- stage 2: the Solrise layer ----------------------------------------------
+IMAGE_DIR="${ROOT_DIR}/infra/image"
+[ -f "${IMAGE_DIR}/Containerfile" ] || {
+  echo "ERROR: ${IMAGE_DIR}/Containerfile not found" >&2
+  exit 1
+}
+
+cd "${ROOT_DIR}"
+echo "[solrise] building ${CUSTOM_IMAGE}:${CUSTOM_TAG} (base ${APPS_TAG})"
+"${ENGINE}" build \
+  --build-arg "BASE_IMAGE=${APPS_TAG}" \
+  --tag "${CUSTOM_IMAGE}:${CUSTOM_TAG}" \
+  --file "${IMAGE_DIR}/Containerfile" \
+  "${IMAGE_DIR}"
 
 echo "[solrise] built ${CUSTOM_IMAGE}:${CUSTOM_TAG}"
 "${ENGINE}" images | grep -F "${CUSTOM_IMAGE}" || true

@@ -13,10 +13,14 @@ swap_size_mb: 4096
 
 # --- source ------------------------------------------------------------------
 # Point this at the repository holding THIS project (compose/, scripts/, Makefile).
-repo_url: "https://github.com/DaniyalM/solrise-erp.git"
+repo_url: "https://github.com/daniyalbphq-commits/solrise-erp.git"
 repo_version: main
 
 # --- image -------------------------------------------------------------------
+# Where Ansible pulls the image from. GitHub Actions builds and pushes the same
+# reference (CUSTOM_IMAGE:CUSTOM_TAG, see .github/workflows/build-image.yml), so
+# keep custom_image/custom_tag in step with the workflow defaults. This image
+# wins over the Terraform-created ECR repository (see the deploy role).
 custom_image: docker.io/daniyalbphq/solrise
 custom_tag: version-15
 frappe_branch: version-15
@@ -39,6 +43,33 @@ gunicorn_timeout: 120
 # --- site setup --------------------------------------------------------------
 # Run create-site.sh (site + apps + setup_erp.py + roles_rbac.py), idempotent.
 run_site_setup: true
+
+# --- media (S3) --------------------------------------------------------------
+# Upload every file (attachments, images, everything the app writes) to the
+# Terraform-managed S3 bucket instead of the EC2 volume. The bucket name arrives
+# in terraform.yml; credentials come from the EC2 instance profile, so there are
+# no access keys to manage. Requires the cloud_storage app, which the deploy
+# installs for you (see docs/15-s3-media-storage.md).
+s3_media_enabled: true
+# Key prefix inside the bucket, so one bucket can serve several sites.
+s3_media_folder: "solrise"
+# Presigned URL lifetime, in seconds, handed to the browser for private files.
+s3_media_presigned_expiry: 300
+# For S3-compatible providers only; empty = AWS (https://s3.<region>.amazonaws.com).
+s3_media_endpoint_url: ""
+# Round-trip an object through the bucket after configuring the site, and fail
+# the deploy if it does not work (clearer than breaking the first upload).
+s3_media_verify: true
+# Escape hatch: true keeps NEW uploads on the volume (e.g. during an S3 outage)
+# while files already in the bucket stay readable.
+s3_media_write_local: false
+# One-off migration of the files that are already on the volume. Flip
+# s3_media_migrate_existing to true, run the deploy, then set it back to false.
+# Start with s3_media_migrate_dry_run: true to see the list without uploading.
+s3_media_migrate_existing: false
+s3_media_migrate_dry_run: true
+# true deletes the local copy after a successful upload (frees the volume).
+s3_media_migrate_remove_local: false
 
 # --- backups -----------------------------------------------------------------
 backup_cron_enabled: true

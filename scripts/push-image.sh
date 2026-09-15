@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Push the built Solrise image to its registry (ECR when running in CI).
+# Push the built Solrise image to its registry (Docker Hub in CI).
 #
 #   ./scripts/push-image.sh
 #
 # Reads CUSTOM_IMAGE / CUSTOM_TAG / CONTAINER_ENGINE from .env, so the same
-# command works locally and in GitHub Actions. Authenticate first:
-#   aws ecr get-login-password --region "$AWS_REGION" \
-#     | podman login --username AWS --password-stdin "${CUSTOM_IMAGE%%/*}"
+# command works locally and in GitHub Actions. The workflow authenticates with
+# the DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets before calling this; to push
+# by hand, log in first:
+#   podman login --username "$DOCKERHUB_USERNAME" --password-stdin docker.io
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -21,5 +22,5 @@ log "pushing ${REF}"
 if "${ENGINE}" push "${REF}"; then
   log "pushed ${REF}"
 else
-  die "push failed. Is '${CUSTOM_IMAGE%%/*}' the registry and is the tag correct?"
+  die "push failed. Is '${CUSTOM_IMAGE%%/*}' the registry, is the tag correct, and did you log in?"
 fi

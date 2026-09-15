@@ -14,7 +14,7 @@ export
 
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs \
-        backup restore fixtures pull-fixtures
+        backup restore fixtures pull-fixtures media
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -31,6 +31,9 @@ local-down: ## Stop the local stack (keeps volumes)
 
 site: ## Create the site and install apps (idempotent)
 	./scripts/create-site.sh
+
+media: ## Point file storage at the S3 media bucket (S3_MEDIA_* in .env)
+	./scripts/setup-media.sh
 
 init: image local-up site ## Full local bring-up in one shot
 

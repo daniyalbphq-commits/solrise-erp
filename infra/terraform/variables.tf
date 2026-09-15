@@ -242,3 +242,22 @@ variable "backup_retention_days" {
   type        = number
   default     = 30
 }
+
+# --- media (uploaded files) --------------------------------------------------
+variable "enable_media_bucket" {
+  description = "Create an S3 bucket for uploaded files/media, and let the app host read and write it."
+  type        = bool
+  default     = true
+}
+
+variable "media_bucket_name" {
+  description = "Explicit S3 bucket name for media. Empty = <name_prefix>-media-<account_id>."
+  type        = string
+  default     = ""
+}
+
+variable "media_noncurrent_version_retention_days" {
+  description = "How long superseded S3 object versions of uploaded files are kept before expiry."
+  type        = number
+  default     = 90
+}

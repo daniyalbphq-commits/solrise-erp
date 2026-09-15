@@ -5,9 +5,9 @@ runs on **EC2**, the database is **MariaDB on RDS**, infrastructure is
 provisioned by **Terraform**, and the host is configured and deployed by
 **Ansible**.
 
-The image is built **once in GitHub Actions and pushed to ECR** — the slow bake
-(frappe + erpnext + hrms + the custom app, ~15 min, memory-hungry) never runs on
-the production host. Ansible only pulls it.
+The image is built **once in GitHub Actions and pushed to Docker Hub** — the slow
+bake (frappe + erpnext + hrms + cloud_storage, ~15 min, memory-hungry) never runs
+on the production host. Ansible only pulls it.
 
 > **Read [`PREREQUISITES.md`](PREREQUISITES.md) first.** It lists every account,
 > key, credential and GitHub setting you need before `terraform init` and before
@@ -28,19 +28,19 @@ flowchart LR
     subgraph GitHub
       GHA[Actions: build-image]
     end
+    subgraph Registry
+      DH[(Docker Hub)]
+    end
     subgraph AWS
-      ECR[(ECR)]
       EC2[EC2]
       RDS[(RDS MariaDB)]
       SM[Secrets Manager]
     end
-    TF -->|creates| ECR
     TF -->|creates| EC2
     TF -->|creates| RDS
     TF -->|creates| SM
-    TF -->|role ARN + ECR URL| GHA
-    GHA -->|podman push| ECR
-    AN -->|podman pull| ECR
+    GHA -->|docker push, token secret| DH
+    AN -->|podman pull| DH
     EC2 --> RDS
     AN -->|reads password| SM
     AN --> EC2
@@ -54,13 +54,16 @@ flowchart LR
 | EC2 + Elastic IP + IAM/SSM role | Terraform | `terraform/compute.tf`, `terraform/iam.tf` |
 | RDS MariaDB + parameter group (utf8mb4) | Terraform | `terraform/rds.tf` |
 | RDS master password (generated + rotated) | Terraform (AWS-managed) | `terraform/rds.tf` → Secrets Manager |
-| ECR repository + S3 backup bucket | Terraform | `terraform/storage.tf` |
-| GitHub OIDC provider + CI push role | Terraform | `terraform/github_oidc.tf` |
+| ECR repository (optional) + S3 backup bucket + S3 media bucket | Terraform | `terraform/storage.tf` |
+| Instance-role policy for the media bucket | Terraform | `terraform/iam.tf` |
+| GitHub OIDC provider + CI push role (only needed for the optional ECR path) | Terraform | `terraform/github_oidc.tf` |
 | Route 53 A record | Terraform | `terraform/dns.tf` |
 | Terraform → Ansible handoff | Terraform | `terraform/outputs.tf` → `ansible/inventory/hosts.ini`, `ansible/group_vars/all/terraform.yml` |
-| **Image build + push to ECR** | **GitHub Actions** | `.github/workflows/build-image.yml`, `scripts/build-image.sh`, `scripts/push-image.sh` |
+| **Image build + push to Docker Hub** | **GitHub Actions** | `.github/workflows/build-image.yml`, `scripts/build-image.sh`, `scripts/push-image.sh` |
+| cloud_storage app in the image + its patch | GitHub Actions | `apps.json`, `infra/image/` |
 | OS hardening, rootless Podman, podman socket | Ansible | `ansible/roles/host` |
 | `.env`, image pull, stack, site, systemd, backups | Ansible | `ansible/roles/solrise` |
+| Site file storage on S3 (config, credential check, migration) | Ansible + scripts | `ansible/roles/solrise`, `scripts/setup-media.sh`, `scripts/configure_s3_media.py` |
 
 ## The app-side prerequisite
 
@@ -114,30 +117,35 @@ terraform output rds_endpoint
 
 ## 2. Build the image in CI (GitHub Actions)
 
-Set the repository variables/secrets from `PREREQUISITES.md` §4, then run the
-workflow:
+Set the repository secrets from `PREREQUISITES.md` §4 (`DOCKERHUB_USERNAME`,
+`DOCKERHUB_TOKEN`), then either push to `main` or run the workflow by hand:
 
 ```bash
 gh workflow run build-image.yml -f tag=version-15
 gh run watch
 ```
 
-It assumes the Terraform-created role via **OIDC** (no static AWS keys), logs in
-to ECR, builds `scripts/build-image.sh`, and pushes `scripts/push-image.sh`. On
-success the tag is:
+It logs in to Docker Hub with the token, builds `scripts/build-image.sh` and
+pushes `scripts/push-image.sh`. The image name follows the token's account unless
+you set the `CUSTOM_IMAGE` variable, so the default result is:
 
 ```
-<acct>.dkr.ecr.<region>.amazonaws.com/solrise/erpnext:version-15
+docker.io/<DOCKERHUB_USERNAME>/solrise:version-15
 ```
 
-`CUSTOM_TAG` (GitHub) must equal `custom_tag` in
-`infra/ansible/group_vars/all/main.yml`. To rebuild on every merge to `main`, just
-push a change to `apps.json` or the build scripts — the workflow also triggers on
-those paths.
+`CUSTOM_TAG` (GitHub) must equal `custom_tag`, and the effective image name must
+equal `custom_image`, in `infra/ansible/group_vars/all/main.yml` - otherwise the
+host pulls something CI never pushed. A push to `main` touching `apps.json`,
+`infra/image/**` or the build scripts triggers a rebuild automatically.
 
-> Offline fallback: set `enable_ecr = false` in `terraform.tfvars` and
-> `rebuild_image: true` in `group_vars/all/main.yml` to build on the EC2 host
-> instead. This reintroduces the ~15-minute host build and is not the default.
+> Offline fallback: empty `custom_image` in `group_vars/all/main.yml` and
+> `rebuild_image: true` builds on the EC2 host instead (also set
+> `enable_ecr = false` unless you want the Terraform-created ECR repository).
+> This reintroduces the ~15-minute host build and is not the default.
+>
+> ECR is still supported: leave `custom_image` empty and Terraform's
+> `ecr_repository_url` is used instead (the CI workflow no longer pushes there,
+> so you would push with `./scripts/push-image.sh` from a logged-in host).
 
 ## 3. Secrets (Ansible Vault)
 
@@ -197,7 +205,25 @@ ansible-playbook site.yml --tags deploy --ask-vault-pass  # redeploy only
   `group_vars/all/main.yml`, and re-run `deploy`. `PULL_POLICY=always` makes the
   host fetch the newly tagged image.
 
-## 6. Migrating existing data onto RDS
+## 6. Uploaded files on S3 (media)
+
+Attachments and images are stored in a **private, versioned S3 bucket** instead
+of the EC2 volume. `terraform apply` creates the bucket and grants the instance
+role access to it; the deploy installs the `cloud_storage` app on the site, points
+it at the bucket (credentials come from the instance profile, so there is nothing
+secret to manage) and proves it with a round trip. Files already on the volume are
+migrated on request.
+
+Full write-up, including the build-time patch the app needs, the migration
+procedure, the backup implications and the caveats:
+[`docs/15-s3-media-storage.md`](../docs/15-s3-media-storage.md).
+
+```bash
+terraform output media_bucket        # the bucket
+SITE_ENV=aws make media              # re-apply the storage settings on the host
+```
+
+## 7. Migrating existing data onto RDS
 
 The existing backup/restore path works because the restore talks to whatever
 `db_host` points at:
@@ -216,7 +242,7 @@ SITE_ENV=aws BACKUP_DIR=/tmp/solrise-backup ./scripts/restore.sh /tmp/solrise-ba
 restore creates the site and loads the dump into RDS. Public/private files land
 on the EBS volume (and are what the S3 sync protects).
 
-## 7. Day-two operations
+## 8. Day-two operations
 
 | Task | Command |
 |---|---|
@@ -226,11 +252,12 @@ on the EBS volume (and are what the S3 sync protects).
 | Migrate | `podman exec -it solrise-backend bench --site <site> migrate` |
 | DB snapshot / PITR | RDS console (automated, `db_backup_retention_days`) |
 | File backups | `/opt/solrise-erp/backups` + optional `s3://<bucket>/files/` |
+| Uploaded files (media) | `s3://<media bucket>/` - versioned, no expiry; migrate with `SITE_ENV=aws make media` |
 | Rotate master password | Secrets Manager rotation on the RDS-managed secret |
 | Traefik cert | `openssl s_client -connect <domain>:443 -servername <domain>` |
 | Rebuild image | `gh workflow run build-image.yml` |
 
-## 8. Teardown
+## 9. Teardown
 
 `db_deletion_protection = true` and a final snapshot are on by default. For a
 throwaway stack set `db_deletion_protection = false` and (optionally)
@@ -252,7 +279,14 @@ ECR repository is retained unless you remove it too.
 - `awscli` comes from apt (v1); if your distro lacks the package, install the v2
   bundle and adjust the ECR login / S3 cron.
 - The S3 backup sync is **off** by default (`backup_s3_enabled: false`); turn it on
-  once you have confirmed credentials work on the host.
+  once you have confirmed credentials work on the host. It covers the *database*
+  dump plus any files still on the volume - uploaded files live in the media
+  bucket and are protected by its versioning instead
+  (`docs/15-s3-media-storage.md`).
+- The media bucket depends on a small build-time patch of `cloud_storage`
+  (`infra/image/patch-cloud-storage.py`): instance-profile credentials and no
+  LibreOffice. The image build fails if the pinned release no longer matches the
+  patch, so bump the tag in `apps.json` deliberately, together with the patch.
 - Read replicas are not wired into Frappe; the RDS endpoint is a single writer.
 - The CI workflow triggers on `main` by default. Adjust the branch filter and
   `github_oidc_branch` together if you deploy from another branch.

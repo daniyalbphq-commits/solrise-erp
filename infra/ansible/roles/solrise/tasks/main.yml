@@ -21,14 +21,22 @@
     rds_secret: "{{ lookup('amazon.aws.secretsmanager_secret', db_secret_arn, region=aws_region) | from_json }}"
   no_log: true
 
-- name: Choose the image source (ECR or Docker Hub when set, otherwise build locally)
+- name: Choose the image source (a configured registry image, else ECR, else build here)
   ansible.builtin.set_fact:
-    # `pull_image` is true when the image comes from any registry (ECR or Docker
-    # Hub). When false, the fallback is to build on the host via `make image`.
-    pull_image: "{{ (ecr_repository_url | default('') | length > 0) or (custom_image | default('') is match('^docker.io/')) }}"
-    effective_image: "{{ ecr_repository_url if (ecr_repository_url | default('') | length > 0) else custom_image }}"
-    effective_pull_policy: "{{ 'always' if ((ecr_repository_url | default('') | length > 0) or (custom_image | default('') is match('^docker.io/'))) else 'missing' }}"
+    # Precedence: `custom_image` when set (Docker Hub by default - what CI pushes
+    # to), otherwise the ECR repository Terraform created. With neither, the
+    # fallback is to build on the host via `make image` + rebuild_image: true.
+    effective_image: "{{ custom_image if (custom_image | default('') | length > 0) else (ecr_repository_url | default('')) }}"
+    # True when the image comes from a registry at all; false means build here.
+    pull_image: "{{ (custom_image | default('') | length > 0) or (ecr_repository_url | default('') | length > 0) }}"
+    # `always` so a registry tag that CI moved is really re-fetched. It only
+    # matters for the build-locally fallback otherwise.
+    effective_pull_policy: "{{ 'always' if ((custom_image | default('') | length > 0) or (ecr_repository_url | default('') | length > 0)) else 'missing' }}"
     effective_backup_dir: "{{ backup_dir | default('') if (backup_dir | default('') | length > 0) else app_dir + '/backups' }}"
+    # cloud_storage ships in the image; it is only installed on the site when
+    # there is a media bucket to talk to (and only then is it configured).
+    effective_install_apps: "{{ install_apps }}{{ ',cloud_storage' if (s3_media_enabled | default(false) | bool and media_bucket | default('') | length > 0) else '' }}"
+    effective_s3_endpoint_url: "{{ s3_media_endpoint_url if (s3_media_endpoint_url | default('') | length > 0) else 'https://s3.' + aws_region + '.amazonaws.com' }}"
 
 # RDS lives in a private subnet: only the app host can reach it, so probe from
 # the target, not the control node.
@@ -69,6 +77,7 @@
     - backup.sh
     - restore.sh
     - run-python.sh
+    - setup-media.sh
     - export-fixtures.sh
     - pull-fixtures.sh
     - bootstrap-vps.sh
@@ -98,10 +107,12 @@
   environment:
     HOME: "{{ deploy_home }}"
     XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
-  when: ecr_repository_url | default('') | length > 0
+  when:
+    - ecr_repository_url | default('') | length > 0
+    - effective_image == ecr_repository_url
   changed_when: false
 
-- name: Log in to Docker Hub (only when the image is pulled from docker.io)
+- name: Log in to Docker Hub (skipped for anonymous/short-lived tokens)
   ansible.builtin.shell: >-
     printf '%s\n' '{{ dockerhub_password }}' |
     podman login --username '{{ dockerhub_username }}' --password-stdin docker.io
@@ -111,8 +122,7 @@
     HOME: "{{ deploy_home }}"
     XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
   when:
-    - ecr_repository_url | default('') | length == 0
-    - custom_image | default('') is match('^docker.io/')
+    - effective_image is match('^docker.io/')
     - dockerhub_username is defined and dockerhub_username | length > 0
     - dockerhub_password is defined and dockerhub_password | length > 0
   no_log: true
@@ -171,6 +181,26 @@
   when: run_site_setup | bool
   register: site_setup
   changed_when: "'site setup complete' in site_setup.stdout or 'create-site: done' in site_setup.stdout"
+
+# --- media (S3) --------------------------------------------------------------
+# Points the site's file storage at the S3 media bucket, proves the instance
+# profile can actually read and write it, and (opt-in) migrates files that are
+# still on the volume. Idempotent: safe on every deploy.
+- name: Configure S3 media storage (site config, credentials check, optional migration)
+  ansible.builtin.command:
+    cmd: ./scripts/setup-media.sh
+    chdir: "{{ app_dir }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "{{ deploy_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
+    SITE_ENV: aws
+  when:
+    - s3_media_enabled | default(false) | bool
+    - media_bucket | default('') | length > 0
+  register: media_setup
+  changed_when: "'site config: updated' in media_setup.stdout"
 
 # --- boot unit ---------------------------------------------------------------
 - name: Ensure the user systemd directory exists

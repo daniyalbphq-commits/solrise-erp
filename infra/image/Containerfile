@@ -1,0 +1,47 @@
+# =============================================================================
+# Solrise ERP - the layer on top of frappe_docker's layered build.
+#
+# scripts/build-image.sh first builds frappe_docker's image (frappe + every app
+# in apps.json) as <CUSTOM_IMAGE>:<CUSTOM_TAG>-apps, then builds THIS file on top
+# of it and tags the result <CUSTOM_IMAGE>:<CUSTOM_TAG>.
+#
+# Keeping it separate means frappe_docker's Containerfile stays stock, and the
+# Solrise-specific image changes stay in one reviewable file:
+#
+#   * libmagic1           - the C library python-magic (a cloud_storage
+#                           dependency) dlopen()s at import time
+#   * the cloud_storage   - instance-profile credentials instead of long-lived
+#     patch                 access keys, and no LibreOffice at install time
+#   * a dependency check  - so a broken image fails the build, not the first
+#                           production upload
+#
+# See infra/image/patch-cloud-storage.py and docs/15-s3-media-storage.md.
+# =============================================================================
+
+ARG BASE_IMAGE=solrise/erpnext:version-15-apps
+FROM ${BASE_IMAGE}
+
+USER root
+
+# python-magic loads libmagic at import time. frappe/base already ships it (it
+# installs Debian `file`, which depends on libmagic1), so this is a no-op today
+# and a cheap guard if a future base image stops installing it.
+RUN dpkg -s libmagic1 >/dev/null 2>&1 || { \
+      apt-get update \
+      && apt-get install -y --no-install-recommends libmagic1 \
+      && rm -rf /var/lib/apt/lists/*; \
+    }
+
+COPY patch-cloud-storage.py /tmp/patch-cloud-storage.py
+
+RUN /home/frappe/frappe-bench/env/bin/python /tmp/patch-cloud-storage.py \
+      /home/frappe/frappe-bench/apps/cloud_storage \
+    && rm -f /tmp/patch-cloud-storage.py
+
+# The app's Python dependencies are installed by frappe_docker's `bench init`
+# (`pip install -e apps/<app>`). Assert that here: `import magic` also proves
+# libmagic1 is loadable, which is the one dependency pip cannot provide.
+RUN /home/frappe/frappe-bench/env/bin/python -c \
+      "import boto3, magic; print('cloud_storage runtime dependencies: OK')"
+
+USER frappe

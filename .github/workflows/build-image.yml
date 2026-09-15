@@ -1,25 +1,28 @@
 # =============================================================================
-# Build the Solrise ERP image in CI and push it to Amazon ECR.
+# Build the Solrise ERP image in CI and push it to Docker Hub.
 #
-# This offloads the slow bake (frappe + erpnext + hrms + the custom app, ~15 min,
-# memory-hungry) from the production EC2 host. Ansible then only *pulls* the
-# image.
+# Runs on every change to the app list or the build machinery on `main`, or by
+# hand:
+#   gh workflow run build-image.yml -f tag=version-15
 #
-# Authentication uses GitHub OIDC -> an IAM role created by Terraform. There are
-# no long-lived AWS keys in this repository.
+# Ansible only *pulls* the image on the host (CUSTOM_IMAGE:CUSTOM_TAG in .env),
+# so the slow bake (frappe + erpnext + hrms + cloud_storage) never runs on
+# production. Authentication is a Docker Hub personal access token kept as a
+# repository secret - no AWS credentials, no long-lived registry password.
 #
-# Required repository configuration (Settings -> Secrets and variables -> Actions):
-#   Variables:
-#     AWS_REGION           e.g. us-east-1
-#     AWS_ROLE_ARN         terraform output github_actions_role_arn
-#     ECR_REPOSITORY_URL   terraform output ecr_repository_url
-#     CUSTOM_TAG           must match custom_tag in infra/ansible/group_vars/all/main.yml
-#     FRAPPE_BRANCH        e.g. version-15
-#     SOLRISE_APP_BRANCH   e.g. version-15
+# Repository configuration (Settings -> Secrets and variables -> Actions):
 #   Secrets:
-#     SOLRISE_APP_URL      git URL for the custom app (embed a token if private)
+#     DOCKERHUB_USERNAME   Docker Hub account/org that owns the image
+#     DOCKERHUB_TOKEN      personal access token with Read & Write scope
+#     SOLRISE_APP_URL      only when apps.json references ${SOLRISE_APP_URL}
+#   Variables (all optional; these are the defaults):
+#     CUSTOM_IMAGE         docker.io/<DOCKERHUB_USERNAME>/solrise
+#     CUSTOM_TAG           version-15   (must match custom_tag in
+#                                       infra/ansible/group_vars/all/main.yml)
+#     FRAPPE_BRANCH        version-15
+#     SOLRISE_APP_BRANCH   version-15
 #
-# See infra/PREREQUISITES.md for the full account/key checklist.
+# The token steps are in infra/PREREQUISITES.md section 4.
 # =============================================================================
 
 name: build-image
@@ -39,61 +42,66 @@ on:
       - "scripts/build-image.sh"
       - "scripts/push-image.sh"
       - "scripts/apps-fingerprint.py"
+      - "infra/image/**"
       - ".github/workflows/build-image.yml"
 
-# OIDC needs id-token; contents:read is enough for checkout.
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
   group: build-image-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  DOCKER_BUILDKIT: "1"
-  AWS_REGION: ${{ vars.AWS_REGION }}
-  ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
-  CUSTOM_IMAGE: ${{ vars.ECR_REPOSITORY_URL }}
-  CUSTOM_TAG: ${{ inputs.tag != '' && inputs.tag || vars.CUSTOM_TAG || 'version-15' }}
-  FRAPPE_BRANCH: ${{ vars.FRAPPE_BRANCH || 'version-15' }}
-  SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'version-15' }}
-
 jobs:
   build-and-push:
-    name: Build and push to ECR
+    name: Build and push to Docker Hub
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v4
+    env:
+      DOCKER_BUILDKIT: "1"
+      # The image name follows the account that owns the token, so nothing has
+      # to be configured for the common case. Set the CUSTOM_IMAGE variable to
+      # push somewhere else (another namespace, or a private registry).
+      CUSTOM_IMAGE: ${{ vars.CUSTOM_IMAGE || format('docker.io/{0}/solrise', secrets.DOCKERHUB_USERNAME) }}
+      CUSTOM_TAG: ${{ inputs.tag != '' && inputs.tag || vars.CUSTOM_TAG || 'version-15' }}
+      FRAPPE_BRANCH: ${{ vars.FRAPPE_BRANCH || 'version-15' }}
+      SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'version-15' }}
 
-      - name: Guard required repository configuration
+    steps:
+      - name: Guard the required repository secrets
         run: |
           set -euo pipefail
           missing=""
-          [ -n "${AWS_REGION:-}" ]          || missing="$missing AWS_REGION"
-          [ -n "${ECR_REPOSITORY_URL:-}" ]  || missing="$missing ECR_REPOSITORY_URL"
-          [ -n "${{ vars.AWS_ROLE_ARN }}" ] || missing="$missing AWS_ROLE_ARN"
+          [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] || missing="$missing DOCKERHUB_USERNAME"
+          [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]    || missing="$missing DOCKERHUB_TOKEN"
           if [ -n "$missing" ]; then
-            echo "::error::Missing repository variables:$missing (see infra/PREREQUISITES.md)"
+            echo "::error::Missing repository secrets:$missing (see infra/PREREQUISITES.md section 4)"
             exit 1
           fi
+          if [ -z "${CUSTOM_IMAGE}" ]; then
+            echo "::error::CUSTOM_IMAGE resolved to an empty value - set the CUSTOM_IMAGE variable or the DOCKERHUB_USERNAME secret"
+            exit 1
+          fi
+          echo "Building ${CUSTOM_IMAGE}:${CUSTOM_TAG} (frappe ${FRAPPE_BRANCH})"
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-session-name: gha-build-image
+      - name: Check out the repository
+        uses: actions/checkout@v4
 
-      - name: Log in to Amazon ECR
+      # The bake pulls the frappe base/build images and writes a multi-GB image;
+      # the toolchains the runner preinstalls are not needed and get in the way.
+      - name: Free disk space
         run: |
           set -euo pipefail
-          registry="${ECR_REPOSITORY_URL%%/*}"
-          aws ecr get-login-password --region "$AWS_REGION" \
-            | docker login --username AWS --password-stdin "$registry"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Write .env for the build
         env:
@@ -112,12 +120,11 @@ jobs:
           SOLRISE_APP_BRANCH=${SOLRISE_APP_BRANCH}
           SITE_NAME=erp.example.com
           EOF
-          echo "Building ${CUSTOM_IMAGE}:${CUSTOM_TAG} (frappe ${FRAPPE_BRANCH})"
 
       - name: Build the image
         run: ./scripts/build-image.sh
 
-      - name: Push the image to ECR
+      - name: Push the image to Docker Hub
         run: ./scripts/push-image.sh
 
       - name: Summary
@@ -129,5 +136,6 @@ jobs:
             echo "${CUSTOM_IMAGE}:${CUSTOM_TAG}"
             echo '```'
             echo ""
-            echo "Deploy with: \`ansible-playbook infra/ansible/site.yml --tags deploy --ask-vault-pass\`"
+            echo "Deploy with: \`ansible-playbook infra/ansible/site.yml --ask-vault-pass\`"
+            echo "(the host pulls \`CUSTOM_IMAGE\`/\`CUSTOM_TAG\` from the .env Ansible renders)"
           } >> "$GITHUB_STEP_SUMMARY"

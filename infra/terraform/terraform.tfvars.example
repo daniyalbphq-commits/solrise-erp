@@ -43,6 +43,13 @@ enable_ecr           = true
 enable_backup_bucket = true
 backup_retention_days = 30
 
+# --- media (uploaded files) --------------------------------------------------
+# Files uploaded in the ERP go to this bucket instead of the EC2 volume
+# (Ansible wires it into the site; see docs/15-s3-media-storage.md).
+enable_media_bucket = true
+# media_bucket_name = "my-media-bucket"   # defaults to <name_prefix>-media-<account_id>
+# media_noncurrent_version_retention_days = 90
+
 # --- GitHub Actions image build (OIDC) ---------------------------------------
 # The repo allowed to push images, as owner/name. Empty = no CI role created.
 github_repository   = "CHANGE-ME/solrise-app"

@@ -53,6 +53,11 @@ output "backup_bucket" {
   value       = var.enable_backup_bucket ? aws_s3_bucket.backups[0].bucket : ""
 }
 
+output "media_bucket" {
+  description = "S3 bucket holding uploaded files/media (empty when disabled)."
+  value       = var.enable_media_bucket ? aws_s3_bucket.media[0].bucket : ""
+}
+
 output "ecr_repository_url" {
   description = "ECR repository URL (empty when disabled). Paste into GitHub as the ECR_REPOSITORY_URL variable and as CUSTOM_IMAGE on the host."
   value       = var.enable_ecr ? aws_ecr_repository.app[0].repository_url : ""
@@ -103,6 +108,7 @@ resource "local_file" "ansible_group_vars" {
     db_username        = aws_db_instance.main.username
     db_secret_arn      = aws_db_instance.main.master_user_secret[0].secret_arn
     backup_bucket      = var.enable_backup_bucket ? aws_s3_bucket.backups[0].bucket : ""
+    media_bucket       = var.enable_media_bucket ? aws_s3_bucket.media[0].bucket : ""
     ecr_repository_url = var.enable_ecr ? aws_ecr_repository.app[0].repository_url : ""
   })
 }
