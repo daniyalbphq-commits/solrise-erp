@@ -5,11 +5,12 @@ private uploads - can live in an S3 bucket instead of the EC2 volume. This doc
 explains what the repo does, what it deliberately does *not* do, and how to run
 it.
 
-> **Status.** The configuration is committed and self-checking (the deploy
-> round-trips an object through the bucket and fails loudly if it cannot), but it
-> has not been exercised on a live AWS host from this repository yet. Read
-> [Verifying](#verifying) and [Caveats](#caveats) before flipping it on for a
-> production site.
+> **Status.** Running in production: uploads (public and private) land in the
+> bucket, `File.file_url` is `/api/method/retrieve?key=...`, the volume's
+> `public/files` and `private/files` stay empty, deletes remove the S3 object, and
+> an anonymous request for a private file gets `403`. The deploy still round-trips
+> an object through the bucket and fails loudly if it cannot. Read
+> [Verifying](#verifying) and [Caveats](#caveats) before changing the setup.
 
 ---
 
@@ -38,7 +39,24 @@ from it.
 | The app itself, baked into the image | `apps.json` (`agritheory/cloud_storage`, pinned) |
 | Installed on the site | Ansible appends `cloud_storage` to `INSTALL_APPS` (`templates/env.j2`) |
 | Site config, credentials check, migration | `scripts/setup-media.sh` -> `scripts/configure_s3_media.py` |
+| Patch that makes the pinned app fit this stack | `infra/image/patch-cloud-storage.py` |
 | Runs during the deploy | `infra/ansible/roles/solrise/tasks/main.yml` |
+
+### What deliberately still lives on the EC2 volume
+
+Media is off the volume, but these are not media and stay where they are:
+
+| Still on the volume | Why |
+|---|---|
+| `sites/<site>/private/backups/*.sql.gz` | Database dumps from `bench backup` |
+| `sites/<site>/logs/`, `locks/`, `task-logs/` | Frappe's own runtime state |
+| `sites/<site>/site_config.json`, `common_site_config.json` | Configuration, including the bucket settings |
+| `sites/assets/`, the bench `apps/` tree | Code and built assets |
+| `sites/<site>/public/files/website_theme/*.css` | Theme CSS written by `website_theme` setup, not an upload |
+
+So "empty volume" means an empty `public/files` and `private/files`. The backup
+directory is expected to grow, and is what `scripts/backup.sh` syncs (see
+[Backups](#backups-after-the-switch)).
 
 ## Why an app is needed
 
@@ -53,7 +71,7 @@ image is reproducible.
 
 ### The one patched file
 
-`infra/image/patch-cloud-storage.py` applies two edits to that pinned release at
+`infra/image/patch-cloud-storage.py` applies four edits to that pinned release at
 **image build time** (`infra/image/Containerfile`, built as a second stage by
 `scripts/build-image.sh`):
 
@@ -63,15 +81,31 @@ image is reproducible.
    chain - the EC2 instance profile - including automatic refresh for long-lived
    gunicorn and RQ processes. That is the same "no static AWS credentials on the
    host" rule the rest of `infra/terraform/iam.tf` follows.
-2. **No LibreOffice.** Upstream's install hook demands `libmagic1` *and*
+2. **No `Data Import` bypass.** Upstream writes attachments for that doctype to
+   the local filesystem. Nothing needs that: the importer reads the attachment
+   through `File.get_content()` (`frappe/core/doctype/data_import/importer.py`),
+   which this app already serves from S3. With the special case removed, import
+   spreadsheets are the last upload path that used to leave a copy on the volume.
+3. **No local thumbnails.** Core's `File.make_thumbnail()` resizes the image and
+   saves it as `public/<name>_small.<ext>` with a plain `open()`/`write()`, which
+   bypasses the storage hook and would put bytes on the EC2 disk. The override
+   never writes a derived object: it points `thumbnail_url` at `file_url` (the
+   cloud URL) and returns it. The only production caller is HRMS Daily Work
+   Summary emails; cloud files are served at full size through
+   `/api/method/retrieve`, which needs no derived object.
+4. **No LibreOffice.** Upstream's install hook demands `libmagic1` *and*
    `libreoffice` (only used for PPT/ODP previews) and apt-gets them via sudo. In a
    container there is no sudo, and anything apt installs is discarded when the
    container is replaced - so the install would fail. `libmagic1` alone is kept,
    and the stock Frappe base image already ships it.
 
-Both edits are exact-match and asserted: if the pinned tag stops looking the way
-the patch expects, **the image build fails** instead of shipping a broken app. If
-you bump the tag in `apps.json`, re-check `infra/image/patch-cloud-storage.py`.
+Every edit is exact-match and asserted: if the pinned tag stops looking the way
+the patch expects, **the image build fails** instead of shipping a broken app. The
+script is idempotent (added lines carry a `Solrise:` marker), and `sanity_check()`
+also parses the patched file to confirm `make_thumbnail` really is a method of
+`CloudStorageFile` - inserting it at the wrong offset used to produce a nested
+function that compiled but was never called. If you bump the tag in `apps.json`,
+re-check `infra/image/patch-cloud-storage.py`.
 
 ## Configuration it writes
 
@@ -147,6 +181,10 @@ podman exec -it solrise-backend bash -lc \
 aws s3 ls --recursive s3://solrise-media-123456789012/solrise/ | tail
 ```
 
+(`solrise-backend` is the friendly name used throughout these docs; list the real
+ones with `podman ps --format '{{.Names}}'`. `podman-compose` names it
+`solrise_backend_1`, Docker Compose `solrise-backend-1`.)
+
 Then confirm the browser can open it, and that a private file is unreachable
 without a session (the URL redirects only after Frappe's File permission check).
 
@@ -209,8 +247,10 @@ directories. Once files live in S3 those directories are empty, so:
 * **Private files stream through Frappe.** The app redirects to a presigned URL,
   so downloads still hit gunicorn (and `CLIENT_MAX_BODY_SIZE`/`PROXY_READ_TIMEOUT`
   in `.env` still apply to uploads).
-* **`Data Import` attachments stay on the volume** - the app deliberately skips
-  that DocType.
+* **`Data Import` attachments now go to the bucket too.** The patch removes the
+  app's special case for that DocType, so import spreadsheets are no longer copied
+  to the volume. Any that were uploaded before the patch stay on the volume (and
+  keep working) until you re-upload or migrate them.
 * **File-list visibility changes.** The app replaces Frappe's
   `get_permission_query_conditions` for `File` with its own (docshare-aware)
   implementation, so long File lists can be filtered differently for System Users.
@@ -218,6 +258,23 @@ directories. Once files live in S3 those directories are empty, so:
   (Frappe's `File.unzip` wants a local path, and the patch removed LibreOffice).
   Image *optimization* does work.
 * **Do not upgrade the pinned app tag casually** - re-verify the patch first.
+
+### Known limitations
+
+These are inherited from the upstream app (or from Frappe v15's assumption that a
+`File` always has a local path). They are recorded so nobody has to rediscover
+them; neither is used by this deployment today.
+
+* **Modules that ask for a local path fail on cloud files.**
+  `File.get_full_path()` returns `self.file_url` for a cloud file, i.e. an URL
+  rather than a filename, so `open()` raises `FileNotFoundError`. This affects
+  Bank Statement Import and stock reposting. The same is true of
+  `frappe.utils.file_manager.save_file()`: the app's `write_file` hook signature
+  does not match what frappe 15.121.x passes it, so that helper breaks - only two
+  niche ERPNext modules call it.
+* **Thumbnails are not generated.** `make_thumbnail` returns the original cloud
+  URL (patch 3), so lists show the full-size image scaled by CSS instead of a
+  300x300 derivative. Correct, just heavier.
 
 ## Turning it off
 
