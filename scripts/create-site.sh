@@ -39,6 +39,30 @@ compose --profile init run --rm create-site
 # cloud_storage) would be baked in and never installed on an existing site.
 # Checked explicitly rather than relying on `bench install-app` being a no-op, so
 # a re-run can never re-execute an app's after_install hooks.
+#
+# Register first: `sites/` is a volume (so the site survives an image rebuild),
+# which SHADOWS the image's own sites/apps.txt. An app the rebuild baked in is
+# therefore present under apps/ but unknown to bench, and `bench install-app`
+# stops with "App <name> not in apps.txt". Writing the name into the bench's
+# apps.txt and linking the app's public/ into sites/assets is what `bench get-app`
+# would have done - minus a clone of something already in the image.
+log "registering the apps the image carries ..."
+printf '%s\n' "${INSTALL_APPS:-}" | tr ',' '\n' | compose exec -T backend bash -lc '
+  set -euo pipefail
+  cd /home/frappe/frappe-bench
+  while read -r app; do
+    [ -n "$app" ] || continue
+    [ -f "apps/$app/$app/hooks.py" ] || continue
+    if ! grep -qx "$app" sites/apps.txt 2>/dev/null; then
+      printf "%s\n" "$app" >> sites/apps.txt
+      echo "  registered $app in sites/apps.txt"
+    fi
+    if [ -d "apps/$app/$app/public" ] && [ ! -e "sites/assets/$app" ]; then
+      ln -s "../../apps/$app/$app/public" "sites/assets/$app"
+      echo "  linked $app assets"
+    fi
+  done'
+
 log "checking apps (INSTALL_APPS=${INSTALL_APPS:-})"
 for app in $(printf '%s' "${INSTALL_APPS:-}" | tr ',' ' '); do
   if compose exec -T backend bench --site "${SITE_NAME}" list-apps 2>/dev/null | tr -d '\r' | grep -qx "${app}"; then
