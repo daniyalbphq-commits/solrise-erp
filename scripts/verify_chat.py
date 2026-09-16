@@ -219,8 +219,11 @@ def check_app_entry_points():
     try:
         from solrise_erp.api import v1
 
-        found = v1.search_faq(query="password")
-        check("search_faq finds it", bool(found.get("matches")), repr(found)[:80])
+        # `v1.*` hands back the tool envelope: {ok, tool, result{...}}.
+        envelope = v1.search_faq(query="password") or {}
+        matches = (envelope.get("result") or {}).get("matches") or envelope.get("matches") or []
+        check("search_faq finds it", bool(matches),
+              (matches[0].get("question") if matches else repr(envelope))[:70])
     except Exception as exc:  # noqa: BLE001
         fail("api.v1.search_faq", f"{type(exc).__name__}: {exc}")
 
