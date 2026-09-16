@@ -218,7 +218,11 @@
   changed_when: "'built' in image_build.stdout"
 
 # --- stack -------------------------------------------------------------------
-- name: Start the stack (Traefik, redis, backend, workers) against RDS
+# `make aws-up` is not a plain `up -d`: it also force-recreates the app
+# containers. A re-pushed image keeps its tag - only the digest changes - and
+# podman-compose compares service config, not the digest, so without that step the
+# host would keep running the previous image and the pulled tag would go unused.
+- name: Start the stack and roll out the pulled image (Traefik, redis, app containers)
   ansible.builtin.command:
     cmd: make aws-up
     chdir: "{{ app_dir }}"

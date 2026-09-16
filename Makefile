@@ -9,11 +9,19 @@ AWS := compose/compose.aws.yaml
 
 COMPOSE_CMD ?= podman-compose
 
+# The services that run CUSTOM_IMAGE:CUSTOM_TAG. A re-pushed image keeps its tag -
+# only the digest changes - and podman-compose compares the *service configuration*,
+# not the digest, so a plain `up -d` leaves the old containers running and the new
+# image silently unused. Recreating these is what makes a CI push go live.
+# redis and Traefik are deliberately left alone, so a deploy does not drop the
+# cache, the queue or the TLS listener.
+APP_SERVICES := backend websocket queue-short queue-long scheduler frontend
+
 -include $(ENV_FILE)
 export
 
 .PHONY: help image local-up local-down init site logs ps shell \
-        prod-up prod-down prod-logs aws-up aws-down aws-logs \
+        prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
         backup restore fixtures pull-fixtures media
 
 help: ## Show this help
@@ -23,8 +31,9 @@ help: ## Show this help
 image: ## Build the custom erpnext+hrms image
 	./scripts/build-image.sh
 
-local-up: ## Start the local stack (detached)
+local-up: ## Start the local stack and roll out a rebuilt image
 	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) up -d
+	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
 
 local-down: ## Stop the local stack (keeps volumes)
 	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) down
@@ -46,8 +55,9 @@ ps: ## Show local container status
 shell: ## Open a bash shell in the backend container
 	$(CONTAINER_ENGINE) exec -it solrise-backend bash
 
-prod-up: ## Start the production stack
+prod-up: ## Start the production stack and roll out a re-pushed image
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) up -d
+	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
 
 prod-down: ## Stop the production stack
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) down
@@ -55,8 +65,12 @@ prod-down: ## Stop the production stack
 prod-logs: ## Tail production logs
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) logs -f --tail=100
 
-aws-up: ## Start the AWS stack (EC2 + external RDS MariaDB)
+aws-up: ## Start the AWS stack (EC2 + RDS) and roll out a re-pushed image
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d
+	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
+
+aws-rollout: ## Recreate only the app containers (pick up a re-pushed tag)
+	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
 
 aws-down: ## Stop the AWS stack
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) down

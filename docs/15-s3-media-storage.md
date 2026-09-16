@@ -143,9 +143,16 @@ terraform output media_bucket
 # 2. Rebuild the image so cloud_storage is baked in (CI)
 gh workflow run build-image.yml -f tag=version-15
 
-# 3. Deploy: pulls the image, installs the app on the site, writes the config
+# 3. Deploy: pulls the image, recreates the app containers, installs the app on
+#    the site, writes the config
 cd infra/ansible && ansible-playbook site.yml --ask-vault-pass
 ```
+
+The deploy's stack step is `make aws-up`, which force-recreates the containers that
+run the image. That is not incidental: podman-compose does not notice that an
+already-tagged image was re-pushed, so without it a green CI run would leave the
+old code running - see
+[`docs/16-deployment-pipeline-status.md`](16-deployment-pipeline-status.md#6-things-that-bit-us-do-not-relearn-these).
 
 The deploy ends with a bucket round trip. If you only want to re-apply the
 storage settings on the host (`SITE_ENV=aws` picks the AWS stack):

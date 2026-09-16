@@ -286,9 +286,17 @@ ECR repository is retained unless you remove it too.
   bucket and are protected by its versioning instead
   (`docs/15-s3-media-storage.md`).
 - The media bucket depends on a small build-time patch of `cloud_storage`
-  (`infra/image/patch-cloud-storage.py`): instance-profile credentials and no
-  LibreOffice. The image build fails if the pinned release no longer matches the
-  patch, so bump the tag in `apps.json` deliberately, together with the patch.
+  (`infra/image/patch-cloud-storage.py`): instance-profile credentials, no
+  `Data Import` bypass, no local thumbnails, and no LibreOffice. The image build
+  fails if the pinned release no longer matches the patch, so bump the tag in
+  `apps.json` deliberately, together with the patch. See
+  `docs/15-s3-media-storage.md`.
+- **A re-pushed image tag only goes live because `make aws-up` recreates the app
+  containers.** podman-compose compares service configuration, not the image
+  digest, so a plain `up -d` would leave the old containers running and the freshly
+  pulled tag unused. If you bring the stack up by hand, use
+  `SITE_ENV=aws make aws-up` (or `make aws-rollout`), not a bare
+  `podman-compose up -d`.
 - Read replicas are not wired into Frappe; the RDS endpoint is a single writer.
 - The CI workflow triggers on `main` by default. Adjust the branch filter and
   `github_oidc_branch` together if you deploy from another branch.

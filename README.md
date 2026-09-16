@@ -91,6 +91,7 @@ Full walkthrough: [`docs/03-phase3-production-vps.md`](docs/03-phase3-production
 | [`docs/10-branding.md`](docs/10-branding.md) | **White-label branding (Solrise) and US/USD locale defaults** |
 | [`docs/14-vps-to-aws-migration.md`](docs/14-vps-to-aws-migration.md) | **VPS → AWS cutover: go live on VPS now, build AWS in parallel, flip DNS to Route 53** |
 | [`docs/15-s3-media-storage.md`](docs/15-s3-media-storage.md) | **Uploaded files on S3 (media off the EC2 volume): bucket, credentials, migration, caveats** |
+| [`docs/16-deployment-pipeline-status.md`](docs/16-deployment-pipeline-status.md) | **Deployment pipeline status: what is automated, what is verified, what is still open** |
 | [`infra/README.md`](infra/README.md) | **AWS deployment: Terraform (EC2 + RDS MariaDB) + Ansible configure/deploy, image built in CI** |
 | [`infra/PREREQUISITES.md`](infra/PREREQUISITES.md) | **Accounts, keys and credentials required before `terraform init` / Ansible** |
 
