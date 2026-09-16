@@ -1,8 +1,8 @@
 # =============================================================================
 # Build the Solrise ERP image in CI and push it to Docker Hub.
 #
-# Runs on every change to the app list or the build machinery on `main`, or by
-# hand:
+# Runs on every change to the app list, the app itself or the build machinery on
+# `main` or `solrise_erp-app`, or by hand:
 #   gh workflow run build-image.yml -f tag=version-15
 #
 # Ansible only *pulls* the image on the host (CUSTOM_IMAGE:CUSTOM_TAG in .env),
@@ -47,7 +47,10 @@ on:
         required: false
         default: version-15
   push:
-    branches: [main]
+    # main carries the build machinery; solrise_erp-app IS the app, published by
+    # scripts/publish-app.sh, so publishing the app rebuilds the image without a
+    # second, unrelated commit here.
+    branches: [main, solrise_erp-app]
     paths:
       - "apps.json"
       - "apps.example.json"
@@ -55,6 +58,7 @@ on:
       - "scripts/push-image.sh"
       - "scripts/apps-fingerprint.py"
       - "infra/image/**"
+      - "solrise_erp/**"
       - ".github/workflows/build-image.yml"
 
 permissions:
