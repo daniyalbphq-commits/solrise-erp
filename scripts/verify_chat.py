@@ -245,12 +245,9 @@ def check_widget_assets():
         "assets/solrise_erp/js/solrise_erp.js",
         "assets/solrise_erp/images/solrise-logo.png",
     ):
-        # `frappe.read_file` decodes text, so it reports a binary file as empty;
-        # measure the file itself instead.
-        try:
-            size = os.path.getsize(frappe.get_bench_relative_path(path))
-        except Exception:  # noqa: BLE001
-            size = 0
+        # Both checks measure the file itself: the logo is a PNG, so anything that
+        # decodes text would report it as empty.
+        size = _asset_size(path)
         check(f"served: /{path}", size > 0, f"{size} bytes")
 
     # The manifest a page renders with must be the one the image shipped: a stale
@@ -267,13 +264,18 @@ def check_widget_assets():
     for url in manifest.values():
         if not isinstance(url, str) or not url.endswith((".css", ".js")):
             continue
-        try:
-            if not os.path.getsize(frappe.get_bench_relative_path(url.lstrip("/"))):
-                missing.append(url)
-        except Exception:  # noqa: BLE001
+        if not _asset_size(url.lstrip("/")):
             missing.append(url)
     check("the cached manifest matches the image", not missing,
           f"{len(manifest)} bundle(s), missing: {missing[:3]}")
+
+
+def _asset_size(relative_path):
+    """Size of a file served under /assets, or 0 when it is not there."""
+    try:
+        return os.path.getsize(os.path.join(frappe.get_bench_path(), relative_path))
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def main():
