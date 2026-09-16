@@ -141,14 +141,25 @@ PY
    * Two ways out, both needing the user: put the real passphrase in
      `/home/pc/.vault_pass`, or re-encrypt `vault.yml` from the recovered values
      using the passphrase already in that file.
-2. **Boot unit not verified.** `solrise.service` is installed by the role, but
-   `systemctl --user status solrise` was `not-found` on the last inspection, so the
-   stack may not come up after a reboot. Container `restart: unless-stopped`
-   policies do not help a rootless stack at boot; `loginctl enable-linger ubuntu`
-   plus the unit is what does. Confirm after the next successful playbook run.
-3. **Backup cron not verified.** The role installs it (`backup_cron_enabled: true`,
-   `02:15`), but `crontab -l` for the deploy user showed no entries. Check after a
-   successful run.
+2. **The stack does not survive a reboot, and nothing backs it up** - both are
+   installed by the `solrise` role *after* the point where the last playbook run
+   stopped, so neither exists yet. Verified on the host 2026-09-16:
+   * `/home/ubuntu/.config/systemd/user/solrise.service` is **absent** and
+     `systemctl --user is-enabled solrise` says `not-found`. `loginctl` shows
+     `Linger=yes`, so the only missing piece is the unit itself. Container
+     `restart: unless-stopped` policies do not bring a rootless stack up at boot:
+     after a reboot the ERP stays down until someone runs `make aws-up`.
+   * `crontab -l` for `ubuntu` reports "no crontab", and `/opt/solrise-erp/backups`
+     does not exist, so the nightly `02:15` backup (`backup_cron_enabled: true`)
+     has never run.
+
+   Both are one successful playbook run away, which is why item 1 is the priority.
+3. **Two secrets are weaker than they should be.**
+   * `DOCKERHUB_TOKEN` is a repository *variable*: stored in plaintext and not
+     masked in run logs. Move it to Secrets (the workflow warns about this).
+   * `vault.yml` and `/home/pc/.vault_pass` disagree (item 1), which is a
+     process smell as much as a blocker: the passphrase should live in exactly one
+     place that Ansible reads.
 4. **No CD.** Deploy is manual by design - `build-image` has no AWS credentials and
    should not, but a separate `deploy.yml` could SSH in and run the playbook. That
    needs an SSH private key (or SSM) **and the vault passphrase** as GitHub
