@@ -151,6 +151,41 @@ and make it persistent in `/etc/sysctl.d/99-solrise.conf`.
 
 ## Application
 
+### Site renders with no CSS after a redeploy / rollout
+
+The page loads and the markup is there, but nothing is styled - and the browser
+console says *Refused to apply style ... MIME type ('text/html')* for every
+`/assets/**.css`.
+
+Cause: `bench build` hashes every asset filename and writes the manifest to
+`sites/assets/assets.json` **inside the image**, and Frappe caches that manifest in
+Redis as `assets_json`. A rollout recreates the app containers on the new image
+but leaves redis running (deliberately - that is the warm cache), so the manifest
+is still the *previous* image's. Every page then requests asset names that no
+longer exist, nginx answers with its HTML fallback, and the browser refuses the
+sheet.
+
+Confirm it (the two hashes must match):
+
+```bash
+podman exec solrise_redis-cache_1 redis-cli get assets_json \
+  | strings | grep -o 'login.bundle.[A-Z0-9]*.css' | head -2
+podman exec solrise_backend_1 ls /home/frappe/frappe-bench/sites/assets/frappe/dist/css \
+  | grep -o 'login.bundle.[A-Z0-9]*.css' | head -2
+```
+
+Fix - clears `assets_json` (`frappe.cache_manager.bench_cache_keys`) and the site
+and website caches, so the next request re-reads the manifest from the image:
+
+```bash
+SITE_ENV=aws make clear-cache
+podman exec -it solrise_backend_1 bench --site <site> clear-cache   # same thing
+```
+
+The `local-up` / `prod-up` / `aws-up` / `aws-rollout` targets and the Ansible
+deploy call `scripts/clear-cache.sh` for you, so this should only be needed by
+hand after an improvised rollout.
+
 ### `bench migrate` fails after an upgrade
 
 Almost always a schema drift from a skipped release. Read the first traceback,

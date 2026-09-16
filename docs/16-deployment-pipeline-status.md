@@ -382,6 +382,22 @@ updates them in place rather than duplicating them).
 * **`\"\\1\"` in a non-raw Python string is `U+0001`**, not a regex backreference -
   that is how a patch script once produced invalid Python. Patch regexes in
   `infra/image/patch-cloud-storage.py` use raw strings for this reason.
+* **A rollout leaves the *old* asset manifest in Redis, and the site then renders
+  with no CSS at all.** `bench build` hashes every asset filename and writes the
+  manifest to `sites/assets/assets.json` **in the image**, while Frappe caches it
+  in Redis as `assets_json`. `make aws-up` / `aws-rollout` / `prod-up` recreate the
+  app containers on the new image but leave redis running on purpose (that is what
+  keeps the cache warm) - so the manifest stays at the previous image's hashes.
+  Symptoms, in order: the page renders unstyled; `/assets/**.css` returns `200`
+  with `text/html`; the browser console says *Refused to apply style ... MIME type
+  ('text/html') is not a supported stylesheet MIME type*; nginx logs `404` for
+  `/assets/frappe/dist/css/website.bundle.<HASH>.css`. Verify with
+  `podman exec solrise_redis-cache_1 redis-cli get assets_json | strings | grep -o 'login.bundle.[A-Z0-9]*.css'`
+  against `ls .../sites/assets/frappe/dist/css/ | grep login.bundle` - different
+  hashes means this is the bug. Fix: `SITE_ENV=aws make clear-cache`
+  (`bench --site <site> clear-cache`, which deletes `bench_cache_keys`), and the
+  next request re-reads the manifest. The rollout, redeploy and deploy paths now
+  call `scripts/clear-cache.sh` themselves, so this should not come back.
 * **An app missing from `apps.json` fails silently - nothing errors, the feature is
   simply gone.** The `${SOLRISE_APP_URL}` entry was dropped in `d969821` to get a
   build to pass, and the deployment then ran as platform + HRMS with no white

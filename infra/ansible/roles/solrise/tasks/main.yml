@@ -250,6 +250,26 @@
   register: site_setup
   changed_when: "'site setup complete' in site_setup.stdout or 'create-site: done' in site_setup.stdout"
 
+# --- caches after a rollout ---------------------------------------------------
+# A rollout recreates the app containers on the new image but deliberately leaves
+# Redis running, so Frappe keeps the *previous* image's cached asset manifest
+# (`assets_json`). Every page then asks for `/assets/**.css` names that no longer
+# exist, nginx answers with its HTML fallback, the browser refuses the sheet, and
+# the site renders with no CSS at all. Clearing the cache re-reads the manifest
+# from the image.
+- name: Clear the site cache so the new image's asset manifest is picked up
+  ansible.builtin.command:
+    cmd: ./scripts/clear-cache.sh
+    chdir: "{{ app_dir }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "{{ deploy_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
+    SITE_ENV: aws
+  when: not ansible_check_mode
+  changed_when: false
+
 # --- application layer (white labeling, assistant, chat) ----------------------
 # With `solrise_app_enabled: true` the site setup above installs solrise_erp and
 # its `after_migrate` applies branding, RBAC, workflows, notifications, reports

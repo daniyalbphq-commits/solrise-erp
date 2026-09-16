@@ -366,6 +366,7 @@ on the EBS volume (and are what the S3 sync protects).
 |---|---|
 | Stack status | `SITE_ENV=aws make ps` (or `make aws-logs`) |
 | Application layer check | `SITE_ENV=aws make verify` |
+| Clear caches (after a rollout, or if the site renders unstyled) | `SITE_ENV=aws make clear-cache` |
 | Shell on the host | `ssh ubuntu@<eip>` or `aws ssm start-session --target <instance-id>` |
 | Bench shell | `podman exec -it solrise-backend bash` |
 | Migrate | `podman exec -it solrise-backend bench --site <site> migrate` |

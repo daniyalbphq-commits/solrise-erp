@@ -22,7 +22,8 @@ export
 
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
-        backup restore fixtures pull-fixtures media verify branding app-fixtures
+        backup restore fixtures pull-fixtures media verify branding app-fixtures \
+        clear-cache
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -34,6 +35,7 @@ image: ## Build the custom erpnext+hrms image
 local-up: ## Start the local stack and roll out a rebuilt image
 	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) up -d
 	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
+	SITE_ENV=local ./scripts/clear-cache.sh
 
 local-down: ## Stop the local stack (keeps volumes)
 	$(COMPOSE_CMD) -f $(LOCAL) --env-file $(ENV_FILE) down
@@ -67,6 +69,7 @@ shell: ## Open a bash shell in the backend container
 prod-up: ## Start the production stack and roll out a re-pushed image
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) up -d
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
+	SITE_ENV=prod ./scripts/clear-cache.sh
 
 prod-down: ## Stop the production stack
 	$(COMPOSE_CMD) -f $(PROD) --env-file $(ENV_FILE) down
@@ -77,9 +80,14 @@ prod-logs: ## Tail production logs
 aws-up: ## Start the AWS stack (EC2 + RDS) and roll out a re-pushed image
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
+	SITE_ENV=aws ./scripts/clear-cache.sh
 
 aws-rollout: ## Recreate only the app containers (pick up a re-pushed tag)
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) up -d --force-recreate $(APP_SERVICES)
+	SITE_ENV=aws ./scripts/clear-cache.sh
+
+clear-cache: ## Clear the site + asset caches (SITE_ENV selects the stack)
+	./scripts/clear-cache.sh
 
 aws-down: ## Stop the AWS stack
 	$(COMPOSE_CMD) -f $(AWS) --env-file $(ENV_FILE) down
