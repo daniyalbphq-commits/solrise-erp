@@ -49,6 +49,9 @@ media: ## Point file storage at the S3 media bucket (S3_MEDIA_* in .env)
 verify: ## Check the deployed application layer (branding, assistant, chat, RBAC)
 	./scripts/run-python.sh scripts/verify_app_layer.py
 
+verify-chat: ## Have a conversation with the deployed chat (menu, intent, gates, audit)
+	./scripts/run-python.sh scripts/verify_chat.py
+
 branding: ## White-label branding without the app (the DocType half of docs/10)
 	./scripts/run-python.sh scripts/branding_only.py
 
