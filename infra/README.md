@@ -375,7 +375,7 @@ on the EBS volume (and are what the S3 sync protects).
 | Shell on the host | `ssh ubuntu@<eip>` or `aws ssm start-session --target <instance-id>` |
 | Bench shell | `podman exec -it solrise-backend bash` |
 | Migrate | `podman exec -it solrise-backend bench --site <site> migrate` |
-| DB snapshot / PITR | RDS console (automated, `db_backup_retention_days`) |
+| DB snapshot / PITR | RDS console, or the commands in `docs/04-operations-runbook.md` section 2.5 (automated, retained 35 days - the maximum - and free at this size) |
 | File backups | `/opt/solrise-erp/backups` + optional `s3://<bucket>/files/` |
 | Uploaded files (media) | `s3://<media bucket>/` - versioned, no expiry; migrate with `SITE_ENV=aws make media` |
 | Rotate master password | Secrets Manager rotation on the RDS-managed secret |

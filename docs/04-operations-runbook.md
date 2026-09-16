@@ -104,6 +104,61 @@ The script locates the `*-database.sql.gz`, `*-files.tar` and
 **Test the restore path at least once into a throwaway stack** before you need
 it. A backup you have never restored is an untested backup.
 
+### 2.5 AWS: the RDS window (automated backups + point-in-time recovery)
+
+The AWS stack needs no script to have a safety net: RDS keeps an automated daily
+snapshot **and the transaction logs behind point-in-time recovery** for
+`db_backup_retention_days`, which is **35 days - the RDS maximum**. That window is
+free, because backups are stored at no charge up to 100% of the provisioned
+storage (50 GiB here, against a database of a few hundred MB).
+See `infra/README.md` section 11 for why the maximum is also the cheapest choice.
+
+```bash
+aws rds describe-db-instances --region us-east-1 --db-instance-identifier solrise-db \
+  --query "DBInstances[].{retention:BackupRetentionPeriod,window:PreferredBackupWindow,restorable:LatestRestorableTime}"
+
+aws rds describe-db-snapshots --region us-east-1 --snapshot-type automated \
+  --query "DBSnapshots[?DBInstanceIdentifier=='solrise-db'].{id:DBSnapshotIdentifier,created:SnapshotCreateTime}" --output table
+```
+
+Restore to a point in time. **This creates a second instance** - it never
+overwrites the original, which is what makes it safe to run while the site is up:
+
+```bash
+aws rds restore-db-instance-to-point-in-time --region us-east-1 \
+  --source-db-instance-identifier solrise-db \
+  --target-db-instance-identifier solrise-db-restored \
+  --use-latest-restorable-time            # or --restore-time 2026-09-16T12:00:00Z
+
+aws rds wait db-instance-available --region us-east-1 --db-instance-identifier solrise-db-restored
+aws rds describe-db-instances --region us-east-1 --db-instance-identifier solrise-db-restored \
+  --query "DBInstances[].{endpoint:Endpoint.Address,secret:MasterUserSecret.SecretArn}" --output json
+```
+
+It comes back with the source's master credentials and parameter group, so nothing
+secret has to change; confirm the `secret` above resolves before pointing the site
+at the `endpoint`. To cut over, set `DB_HOST` to the new endpoint and restart the
+stack (`/opt/solrise-erp/.env` then `SITE_ENV=aws make aws-up`) - note that file is
+rendered by Ansible from Terraform's `rds_address` output, so the durable version of
+the same move is to make Terraform manage the restored instance. Delete the old one
+once the site answers and `make verify` passes.
+
+Keep a copy beyond 35 days by taking a manual snapshot before anything risky - it is
+kept until you delete it, and billed only past the free allowance:
+
+```bash
+aws rds create-db-snapshot --region us-east-1 --db-instance-identifier solrise-db \
+  --db-snapshot-identifier solrise-db-pre-upgrade-$(date -u +%Y%m%d)
+```
+
+> **Two limits worth knowing.** RDS backups are not an export: they restore *this
+database*, not the account or the region - `scripts/backup.sh` plus the S3 sync
+(`backup_s3_enabled`) is what would. And on this stack neither the nightly backup
+cron nor the S3 sync is installed yet (`docs/16` section 6 item 2), so the RDS
+window above is currently the **only** backup. A restore nobody has run is an
+untested restore: restoring this database once into a throwaway instance and
+confirming the site can read it is the cheapest insurance in this document.
+
 ---
 
 ## 3. Upgrades
