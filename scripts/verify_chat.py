@@ -271,9 +271,14 @@ def check_widget_assets():
 
 
 def _asset_size(relative_path):
-    """Size of a file served under /assets, or 0 when it is not there."""
+    """Size of a file served under /assets, or 0 when it is not there.
+
+    Resolved from the sites path rather than through `frappe.get_bench_path()`:
+    the bench root is that path's parent, and the file is measured, not read, so a
+    binary asset is not mistaken for an empty one.
+    """
     try:
-        return os.path.getsize(os.path.join(frappe.get_bench_path(), relative_path))
+        return os.path.getsize(os.path.join(os.path.dirname(SITES_PATH), relative_path))
     except Exception:  # noqa: BLE001
         return 0
 
