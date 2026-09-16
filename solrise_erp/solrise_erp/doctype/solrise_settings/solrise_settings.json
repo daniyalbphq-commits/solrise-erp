@@ -1,0 +1,293 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "creation": "2026-09-17 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "assistant_section",
+  "enabled",
+  "provider",
+  "api_base_url",
+  "api_key",
+  "model",
+  "column_break_assistant",
+  "max_tokens",
+  "temperature",
+  "rate_limit_per_hour",
+  "system_prompt",
+  "guardrails_section",
+  "allow_record_lookup",
+  "allow_ticket_creation",
+  "allow_navigation",
+  "allow_status_update",
+  "chat_section",
+  "enable_universal_chat",
+  "chat_enable_llm_fallback",
+  "chat_confidence_threshold",
+  "chat_allow_delete",
+  "chat_allow_approve",
+  "chat_max_slot_turns",
+  "column_break_chat",
+  "chat_enforce_permlevel",
+  "chat_allowed_doctypes",
+  "chat_allowed_workflows",
+  "chat_knowledge_base_doctype",
+  "chat_my_tasks_doctypes",
+  "chat_urgency_field",
+  "retention_section",
+  "enable_log_purge",
+  "chat_log_retention_days",
+  "audit_log_retention_days",
+  "message_log_retention_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "assistant_section",
+   "fieldtype": "Section Break",
+   "label": "Assistant"
+  },
+  {
+   "default": "0",
+   "description": "Master switch for the LLM assistant. Until this is on with a provider below, the chat answers from its deterministic rules only.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "default": "OpenAI",
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "OpenAI\nOllama\nAzure OpenAI\nCustom"
+  },
+  {
+   "default": "https://api.openai.com/v1",
+   "description": "OpenAI: https://api.openai.com/v1 · Ollama on this host: http://host.containers.internal:11434/v1 · Azure: your deployment gateway · Custom: any OpenAI-compatible /v1",
+   "fieldname": "api_base_url",
+   "fieldtype": "Data",
+   "label": "API Base URL"
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key"
+  },
+  {
+   "default": "gpt-4o-mini",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model"
+  },
+  {
+   "fieldname": "column_break_assistant",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1024",
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens"
+  },
+  {
+   "default": "0.2",
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature"
+  },
+  {
+   "default": "60",
+   "description": "Per user, per hour. Counted in Redis.",
+   "fieldname": "rate_limit_per_hour",
+   "fieldtype": "Int",
+   "label": "Rate Limit / hour"
+  },
+  {
+   "fieldname": "system_prompt",
+   "fieldtype": "Small Text",
+   "label": "System Prompt"
+  },
+  {
+   "fieldname": "guardrails_section",
+   "fieldtype": "Section Break",
+   "label": "Assistant Guardrails"
+  },
+  {
+   "default": "1",
+   "description": "Lets the assistant find customers, items, employees, leads, tickets and so on, as the requesting user.",
+   "fieldname": "allow_record_lookup",
+   "fieldtype": "Check",
+   "label": "Allow Record Lookup"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_ticket_creation",
+   "fieldtype": "Check",
+   "label": "Allow Ticket Creation"
+  },
+  {
+   "default": "1",
+   "description": "Lets the assistant tell the user which Desk page to open.",
+   "fieldname": "allow_navigation",
+   "fieldtype": "Check",
+   "label": "Allow Navigation Hints"
+  },
+  {
+   "default": "0",
+   "description": "Reserved for ticket status transitions. Off by default: changing a ticket's state should be a human decision.",
+   "fieldname": "allow_status_update",
+   "fieldtype": "Check",
+   "label": "Allow Status Update"
+  },
+  {
+   "fieldname": "chat_section",
+   "fieldtype": "Section Break",
+   "label": "Universal Chat"
+  },
+  {
+   "default": "1",
+   "description": "Master switch for the transactional chat entry flow (Desk and Portal).",
+   "fieldname": "enable_universal_chat",
+   "fieldtype": "Check",
+   "label": "Enable Universal Chat"
+  },
+  {
+   "default": "0",
+   "description": "Off by default: the chat resolves intents deterministically until you turn this on.",
+   "fieldname": "chat_enable_llm_fallback",
+   "fieldtype": "Check",
+   "label": "Enable LLM Fallback"
+  },
+  {
+   "default": "0.6",
+   "fieldname": "chat_confidence_threshold",
+   "fieldtype": "Float",
+   "label": "Confidence Threshold"
+  },
+  {
+   "default": "0",
+   "description": "Destructive actions stay off unless there is a review process.",
+   "fieldname": "chat_allow_delete",
+   "fieldtype": "Check",
+   "label": "Allow Delete"
+  },
+  {
+   "default": "0",
+   "description": "Workflow transitions from chat require this and a confirmation turn.",
+   "fieldname": "chat_allow_approve",
+   "fieldtype": "Check",
+   "label": "Allow Approve"
+  },
+  {
+   "default": "4",
+   "description": "Clarification loop guard: how many field questions one turn may ask.",
+   "fieldname": "chat_max_slot_turns",
+   "fieldtype": "Int",
+   "label": "Max Slot Turns"
+  },
+  {
+   "fieldname": "column_break_chat",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Respect field-level security: permlevel > 0 fields are never read or written from chat.",
+   "fieldname": "chat_enforce_permlevel",
+   "fieldtype": "Check",
+   "label": "Enforce Permlevel"
+  },
+  {
+   "description": "One DocType per line. Empty means the built-in registry. Even a role that could write a DocType cannot touch it from chat unless it is listed here.",
+   "fieldname": "chat_allowed_doctypes",
+   "fieldtype": "Small Text",
+   "label": "Allowed DocTypes"
+  },
+  {
+   "description": "One DocType per line. Empty means every active workflow may be actioned (with chat_allow_approve on).",
+   "fieldname": "chat_allowed_workflows",
+   "fieldtype": "Small Text",
+   "label": "Allowed Workflows"
+  },
+  {
+   "default": "Solrise FAQ",
+   "fieldname": "chat_knowledge_base_doctype",
+   "fieldtype": "Link",
+   "label": "Knowledge Base DocType",
+   "options": "DocType"
+  },
+  {
+   "default": "Issue",
+   "description": "Comma separated. DocTypes the My Tasks quick action searches.",
+   "fieldname": "chat_my_tasks_doctypes",
+   "fieldtype": "Small Text",
+   "label": "My Tasks DocTypes"
+  },
+  {
+   "default": "priority",
+   "description": "Field urgency sets on create/update. Empty records urgency in the audit log only. Urgency never widens permissions.",
+   "fieldname": "chat_urgency_field",
+   "fieldtype": "Data",
+   "label": "Urgency Field"
+  },
+  {
+   "fieldname": "retention_section",
+   "fieldtype": "Section Break",
+   "label": "Log Retention"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_log_purge",
+   "fieldtype": "Check",
+   "label": "Enable Log Purge"
+  },
+  {
+   "default": "90",
+   "fieldname": "chat_log_retention_days",
+   "fieldtype": "Int",
+   "label": "Chat Log Retention (days)"
+  },
+  {
+   "default": "180",
+   "description": "Audit rows are the record of what the assistant was allowed to do; treat this as a data-protection control.",
+   "fieldname": "audit_log_retention_days",
+   "fieldtype": "Int",
+   "label": "Audit Log Retention (days)"
+  },
+  {
+   "default": "180",
+   "fieldname": "message_log_retention_days",
+   "fieldtype": "Int",
+   "label": "Message Log Retention (days)"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-17 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Solrise ERP",
+ "name": "Solrise Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "read": 1,
+   "role": "Solrise Admin",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

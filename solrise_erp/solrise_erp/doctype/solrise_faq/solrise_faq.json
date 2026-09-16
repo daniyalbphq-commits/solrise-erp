@@ -1,0 +1,177 @@
+{
+	"allow_import": 1,
+	"allow_rename": 1,
+	"autoname": "field:question",
+	"creation": "2026-09-17 00:00:00.000000",
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"question",
+		"answer",
+		"category",
+		"keywords",
+		"tags",
+		"enabled",
+		"times_matched"
+	],
+	"fields": [
+		{
+			"fieldname": "question",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Question",
+			"reqd": 1,
+			"unique": 1
+		},
+		{
+			"fieldname": "answer",
+			"fieldtype": "Text",
+			"label": "Answer",
+			"reqd": 1
+		},
+		{
+			"fieldname": "category",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Category"
+		},
+		{
+			"description": "Comma-separated synonyms the knowledge base search also matches on.",
+			"fieldname": "keywords",
+			"fieldtype": "Data",
+			"label": "Keywords"
+		},
+		{
+			"fieldname": "tags",
+			"fieldtype": "Data",
+			"label": "Tags"
+		},
+		{
+			"default": 1,
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"in_list_view": 1,
+			"label": "Enabled"
+		},
+		{
+			"default": "0",
+			"description": "How often an answer has been served. Read-only telemetry.",
+			"fieldname": "times_matched",
+			"fieldtype": "Int",
+			"label": "Times Matched",
+			"read_only": 1
+		}
+	],
+	"index_web_pages_for_search": 0,
+	"links": [],
+	"modified": "2026-09-17 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Solrise ERP",
+	"name": "Solrise FAQ",
+	"naming_rule": "By fieldname",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "All",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "Support Agent",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "Support Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "HR User",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "CRM User",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 0,
+			"export": 1,
+			"import": 1,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "Solrise Admin",
+			"share": 0,
+			"submit": 0,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"title_field": "question",
+	"track_changes": 0
+}

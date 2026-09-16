@@ -1,0 +1,161 @@
+{
+	"autoname": "hash",
+	"creation": "2026-09-17 00:00:00.000000",
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"session_id",
+		"user",
+		"timestamp",
+		"channel",
+		"event_type",
+		"target_doctype",
+		"docname",
+		"action",
+		"urgency",
+		"intent_raw",
+		"slots",
+		"permission_result",
+		"result",
+		"latency_ms",
+		"ip_address"
+	],
+	"fields": [
+		{
+			"fieldname": "session_id",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Session ID",
+			"reqd": 1,
+			"search_index": 1
+		},
+		{
+			"fieldname": "user",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "User",
+			"options": "User",
+			"reqd": 1
+		},
+		{
+			"fieldname": "timestamp",
+			"fieldtype": "Datetime",
+			"in_list_view": 1,
+			"label": "Timestamp",
+			"reqd": 1,
+			"search_index": 1
+		},
+		{
+			"default": "Desk",
+			"fieldname": "channel",
+			"fieldtype": "Select",
+			"label": "Channel",
+			"options": "Desk\nPortal\nAPI"
+		},
+		{
+			"fieldname": "event_type",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Event Type",
+			"options": "Intent\nAllowed\nDenied\nExecuted\nError",
+			"reqd": 1
+		},
+		{
+			"fieldname": "target_doctype",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Target DocType",
+			"options": "DocType"
+		},
+		{
+			"fieldname": "docname",
+			"fieldtype": "Data",
+			"label": "Document"
+		},
+		{
+			"fieldname": "action",
+			"fieldtype": "Select",
+			"label": "Action",
+			"options": "read\ncreate\nupdate\nsubmit\ncancel\ndelete\napprove"
+		},
+		{
+			"fieldname": "urgency",
+			"fieldtype": "Select",
+			"label": "Urgency",
+			"options": "Low\nMedium\nHigh\nUrgent"
+		},
+		{
+			"fieldname": "intent_raw",
+			"fieldtype": "Small Text",
+			"label": "Intent"
+		},
+		{
+			"fieldname": "slots",
+			"fieldtype": "Code",
+			"label": "Slots (JSON)"
+		},
+		{
+			"default": "na",
+			"fieldname": "permission_result",
+			"fieldtype": "Select",
+			"label": "Permission",
+			"options": "allowed\ndenied\nna"
+		},
+		{
+			"fieldname": "result",
+			"fieldtype": "Long Text",
+			"label": "Result"
+		},
+		{
+			"fieldname": "latency_ms",
+			"fieldtype": "Int",
+			"label": "Latency (ms)"
+		},
+		{
+			"fieldname": "ip_address",
+			"fieldtype": "Data",
+			"label": "IP"
+		}
+	],
+	"index_web_pages_for_search": 0,
+	"links": [],
+	"modified": "2026-09-17 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Solrise ERP",
+	"name": "Solrise AI Audit Log",
+	"naming_rule": "Random",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "Solrise Admin",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"track_changes": 0
+}

@@ -1,0 +1,162 @@
+{
+	"autoname": "field:channel_name",
+	"creation": "2026-09-17 00:00:00.000000",
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"channel_name",
+		"enabled",
+		"is_default",
+		"channel_type",
+		"provider",
+		"api_base_url",
+		"api_key",
+		"account_sid",
+		"auth_token",
+		"phone_number_id",
+		"from_number",
+		"default_country_code",
+		"default_recipients",
+		"rate_limit_per_minute"
+	],
+	"fields": [
+		{
+			"fieldname": "channel_name",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Channel Name",
+			"reqd": 1,
+			"unique": 1
+		},
+		{
+			"default": 0,
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"in_list_view": 1,
+			"label": "Enabled"
+		},
+		{
+			"default": 0,
+			"fieldname": "is_default",
+			"fieldtype": "Check",
+			"in_list_view": 1,
+			"label": "Default"
+		},
+		{
+			"default": "SMS",
+			"fieldname": "channel_type",
+			"fieldtype": "Select",
+			"label": "Channel Type",
+			"options": "WhatsApp\nSMS\nWebhook"
+		},
+		{
+			"default": "Generic HTTP",
+			"fieldname": "provider",
+			"fieldtype": "Select",
+			"label": "Provider",
+			"options": "Meta WhatsApp Cloud API\nTwilio\nGeneric HTTP"
+		},
+		{
+			"fieldname": "api_base_url",
+			"fieldtype": "Data",
+			"label": "API Base URL"
+		},
+		{
+			"fieldname": "api_key",
+			"fieldtype": "Password",
+			"label": "API Key"
+		},
+		{
+			"fieldname": "account_sid",
+			"fieldtype": "Data",
+			"label": "Account SID"
+		},
+		{
+			"fieldname": "auth_token",
+			"fieldtype": "Password",
+			"label": "Auth Token"
+		},
+		{
+			"fieldname": "phone_number_id",
+			"fieldtype": "Data",
+			"label": "Phone Number ID"
+		},
+		{
+			"fieldname": "from_number",
+			"fieldtype": "Data",
+			"label": "From Number"
+		},
+		{
+			"fieldname": "default_country_code",
+			"fieldtype": "Data",
+			"label": "Default Country Code"
+		},
+		{
+			"fieldname": "default_recipients",
+			"fieldtype": "Small Text",
+			"label": "Default Recipients"
+		},
+		{
+			"default": 30,
+			"fieldname": "rate_limit_per_minute",
+			"fieldtype": "Int",
+			"label": "Rate Limit / minute"
+		}
+	],
+	"index_web_pages_for_search": 0,
+	"links": [],
+	"modified": "2026-09-17 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Solrise ERP",
+	"name": "Solrise Notification Channel",
+	"naming_rule": "By fieldname",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "Solrise Admin",
+			"share": 0,
+			"submit": 0,
+			"write": 1
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 0,
+			"role": "Support Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"title_field": "channel_name",
+	"track_changes": 0
+}

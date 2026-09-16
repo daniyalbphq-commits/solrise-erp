@@ -1,0 +1,130 @@
+{
+	"autoname": "hash",
+	"creation": "2026-09-17 00:00:00.000000",
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"session_id",
+		"user",
+		"role",
+		"channel",
+		"message",
+		"tool_name",
+		"tool_args",
+		"tool_result",
+		"tokens",
+		"latency_ms",
+		"timestamp"
+	],
+	"fields": [
+		{
+			"fieldname": "session_id",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Session ID",
+			"reqd": 1,
+			"search_index": 1
+		},
+		{
+			"fieldname": "user",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "User",
+			"options": "User",
+			"reqd": 1
+		},
+		{
+			"default": "user",
+			"fieldname": "role",
+			"fieldtype": "Select",
+			"in_list_view": 1,
+			"label": "Role",
+			"options": "user\nassistant\ntool"
+		},
+		{
+			"default": "Desk",
+			"fieldname": "channel",
+			"fieldtype": "Select",
+			"label": "Channel",
+			"options": "Desk\nPortal\nAPI"
+		},
+		{
+			"fieldname": "message",
+			"fieldtype": "Long Text",
+			"label": "Message"
+		},
+		{
+			"fieldname": "tool_name",
+			"fieldtype": "Data",
+			"label": "Tool"
+		},
+		{
+			"fieldname": "tool_args",
+			"fieldtype": "Code",
+			"label": "Tool Arguments"
+		},
+		{
+			"fieldname": "tool_result",
+			"fieldtype": "Long Text",
+			"label": "Tool Result"
+		},
+		{
+			"fieldname": "tokens",
+			"fieldtype": "Int",
+			"label": "Tokens"
+		},
+		{
+			"fieldname": "latency_ms",
+			"fieldtype": "Int",
+			"label": "Latency (ms)"
+		},
+		{
+			"fieldname": "timestamp",
+			"fieldtype": "Datetime",
+			"in_list_view": 1,
+			"label": "Timestamp",
+			"search_index": 1
+		}
+	],
+	"index_web_pages_for_search": 0,
+	"links": [],
+	"modified": "2026-09-17 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Solrise ERP",
+	"name": "Solrise Chat Log",
+	"naming_rule": "Random",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		},
+		{
+			"create": 0,
+			"delete": 0,
+			"email": 0,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"read": 1,
+			"report": 1,
+			"role": "Solrise Admin",
+			"share": 0,
+			"submit": 0,
+			"write": 0
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"track_changes": 0
+}
