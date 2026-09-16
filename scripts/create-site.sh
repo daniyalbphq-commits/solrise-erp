@@ -30,6 +30,14 @@ fi
 log "running create-site (idempotent) ..."
 compose run --rm create-site
 
+# Bring the database up to date with the code in the image. CI rebuilds the image
+# whenever apps.json or the build machinery changes and the apps track their
+# branches, so a redeploy can carry schema changes and patches the site has not
+# seen yet - without this the site would run new code against an old schema.
+# Idempotent, and a no-op on a freshly created site.
+log "applying pending migrations ..."
+compose exec -T backend bench --site "${SITE_NAME}" migrate
+
 log "installed apps:"
 compose exec -T backend bench --site "${SITE_NAME}" list-apps
 
