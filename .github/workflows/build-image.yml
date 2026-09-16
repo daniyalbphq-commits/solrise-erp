@@ -150,6 +150,22 @@ jobs:
           SITE_NAME=erp.example.com
           EOF
 
+      - name: Check the app repository is reachable
+        env:
+          SOLRISE_APP_URL: ${{ secrets.SOLRISE_APP_URL }}
+        run: |
+          set -euo pipefail
+          # The bake fetches the app first, so a stale SOLRISE_APP_URL or a typo in
+          # the branch would otherwise fail several minutes in, with no clue which
+          # value was wrong. Check both here instead. The URL is never echoed with
+          # its credentials: only the host and path are shown.
+          shown="$(printf '%s' "${SOLRISE_APP_URL}" | sed -E 's#(//)[^@/]*@#\1#')"
+          if ! git ls-remote --exit-code --heads "${SOLRISE_APP_URL}" "${SOLRISE_APP_BRANCH}" >/dev/null 2>&1; then
+            echo "::error title=The app branch is not reachable::git could not read the branch ${SOLRISE_APP_BRANCH} of ${shown} (redacted). Check the SOLRISE_APP_URL secret - CI needs an https URL it can clone (https://x-access-token:<PAT>@github.com/<owner>/<app> for a private repository) - and that the branch exists."
+            exit 1
+          fi
+          echo "app remote OK: ${shown} branch ${SOLRISE_APP_BRANCH}"
+
       - name: Build the image
         run: ./scripts/build-image.sh
 

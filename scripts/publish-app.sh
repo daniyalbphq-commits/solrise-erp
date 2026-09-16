@@ -70,20 +70,33 @@ else
   command -v tar >/dev/null || die "tar is required for the non-git case"
   TMP="$(mktemp -d)"
   trap 'rm -rf "${TMP}"' EXIT
-  log "not a git checkout of its own - staging into a temp orphan branch of ${REMOTE}"
-  # A shallow clone is enough: the orphan commit below has no parent, and history
-  # is never read. GIT_SSH_COMMAND (if set) covers this clone and the push.
-  git clone --quiet --depth 1 "${REMOTE}" "${TMP}/repo" || die "could not clone ${REMOTE} (does it exist, and do you have access?)"
-  cd "${TMP}/repo"
-  git checkout --quiet --orphan "${BRANCH}"
-  git rm -rq --cached . 2>/dev/null || true
+  # Prefer to add a commit to the branch that is already there. Publishing a fresh
+  # orphan instead would rewrite the branch's history on every run, and the push
+  # would be rejected as non-fast-forward the second time anyone published.
+  # A shallow clone is enough for either path.
+  if git clone --quiet --depth 1 --branch "${BRANCH}" "${REMOTE}" "${TMP}/repo" 2>/dev/null; then
+    log "app branch ${BRANCH} exists - adding a commit on top of it"
+    cd "${TMP}/repo"
+  else
+    log "app branch ${BRANCH} does not exist yet - creating it from ${REMOTE}"
+    git clone --quiet --depth 1 "${REMOTE}" "${TMP}/repo" || die "could not clone ${REMOTE} (does it exist, and do you have access?)"
+    cd "${TMP}/repo"
+    git checkout --quiet --orphan "${BRANCH}"
+  fi
+  # The branch is a snapshot of ${SRC}: clear the tree first, so a file the app no
+  # longer has is removed here too, then let `git add -A` stage both halves of the
+  # diff.
   find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
   ( cd "${SRC}" && tar -cf - \
       --exclude=.git --exclude=__pycache__ --exclude=node_modules \
       --exclude='*.pyc' --exclude=.env . ) | tar -xf - -C "${TMP}/repo"
   git add -A
-  git commit -q -m "Solrise app (published from ${SRC})"
-  log "committed $(git rev-parse --short HEAD): $(git ls-tree -r --name-only HEAD | wc -l) file(s)"
+  if git diff --cached --quiet; then
+    log "nothing changed - ${BRANCH} already matches ${SRC}"
+  else
+    git commit -q -m "Solrise app snapshot from ${SRC}"
+    log "committed $(git rev-parse --short HEAD): $(git ls-tree -r --name-only HEAD | wc -l) file(s)"
+  fi
   if [ "${DRY}" = "1" ]; then
     log "DRY_RUN=1 - not pushing (branch ${BRANCH} exists only in ${TMP})"
     trap - EXIT
