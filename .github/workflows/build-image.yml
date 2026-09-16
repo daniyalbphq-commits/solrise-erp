@@ -113,15 +113,18 @@ jobs:
           SOLRISE_APP_URL: ${{ secrets.SOLRISE_APP_URL }}
         run: |
           set -euo pipefail
+          # The scripts *source* this file (set -a; . ./.env), so every value with
+          # a space has to be quoted: `COMPOSE_CMD=docker compose` unquoted would
+          # be read as an assignment followed by the command `compose`.
           cat > .env <<EOF
           CONTAINER_ENGINE=docker
-          COMPOSE_CMD=docker compose
+          COMPOSE_CMD="docker compose"
           CUSTOM_IMAGE=${CUSTOM_IMAGE}
           CUSTOM_TAG=${CUSTOM_TAG}
           FRAPPE_PATH=https://github.com/frappe/frappe
           FRAPPE_BRANCH=${FRAPPE_BRANCH}
           FRAPPE_IMAGE_PREFIX=docker.io/frappe
-          SOLRISE_APP_URL=${SOLRISE_APP_URL}
+          SOLRISE_APP_URL="${SOLRISE_APP_URL}"
           SOLRISE_APP_BRANCH=${SOLRISE_APP_BRANCH}
           SITE_NAME=erp.example.com
           EOF
