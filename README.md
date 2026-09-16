@@ -79,6 +79,13 @@ matrix is applied by `scripts/roles_rbac.py` in the deployment repository; the
 exported file stays there as the backup, which is what `docs/11` section 5.4 calls
 it.
 
+**Nor is `is_standard` set on anything.** A fixture that claims to be standard is
+refused outside developer mode — `Dashboard Chart.validate` throws "Cannot edit
+Standard charts" — so a `bench migrate` on the deployed site stops there. Re-export
+the fixtures (which marks the records standard when it runs in developer mode) and
+clear `is_standard` before committing them here. `Solrise Open Tickets by Status`
+and its four siblings were exactly that failure.
+
 ## Verify
 
 ```bash
