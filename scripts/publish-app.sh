@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SRC="${1:?usage: publish-app.sh <path-to-solrise_erp-checkout>}"
 [ -d "${SRC}" ] || { echo "ERROR: not a directory: ${SRC}" >&2; exit 2; }
-SRC="$(cd "${SRC}" && pwd)"
+SRC="$(cd "${SRC}" && pwd -P)"
 
 REMOTE="${PUBLISH_REMOTE:-git@github.com:daniyalbphq-commits/solrise-erp.git}"
 BRANCH="${PUBLISH_BRANCH:-solrise_erp-app}"
@@ -51,7 +51,13 @@ if [ -x "${SCRIPT_DIR}/check-app-source.sh" ]; then
 fi
 
 # --- 2. publish ---------------------------------------------------------------
-if git -C "${SRC}" rev-parse --git-dir >/dev/null 2>&1; then
+# `git -C` walks up to the enclosing repository, so "is this a git checkout?" has
+# to mean "is this directory that repository's root?". The usual layout here is
+# the app *inside* the deployment repository (gitignored), where the naive test
+# would push the whole deployment repository as the app branch - the one mistake
+# this script must never make.
+REPO_TOP="$(git -C "${SRC}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "${REPO_TOP}" ] && [ "$(cd "${REPO_TOP}" && pwd -P)" = "${SRC}" ]; then
   DIRTY="$(git -C "${SRC}" status --porcelain | wc -l)"
   [ "${DIRTY}" -eq 0 ] || log "note: ${DIRTY} uncommitted change(s) in the checkout will NOT be published"
   log "pushing $(git -C "${SRC}" rev-parse --short HEAD) -> ${REMOTE} ${BRANCH}"
@@ -64,8 +70,10 @@ else
   command -v tar >/dev/null || die "tar is required for the non-git case"
   TMP="$(mktemp -d)"
   trap 'rm -rf "${TMP}"' EXIT
-  log "not a git checkout - staging into a temp clone of ${REMOTE}"
-  git clone --quiet "${REMOTE}" "${TMP}/repo" || die "could not clone ${REMOTE} (does it exist, and do you have access?)"
+  log "not a git checkout of its own - staging into a temp orphan branch of ${REMOTE}"
+  # A shallow clone is enough: the orphan commit below has no parent, and history
+  # is never read. GIT_SSH_COMMAND (if set) covers this clone and the push.
+  git clone --quiet --depth 1 "${REMOTE}" "${TMP}/repo" || die "could not clone ${REMOTE} (does it exist, and do you have access?)"
   cd "${TMP}/repo"
   git checkout --quiet --orphan "${BRANCH}"
   git rm -rq --cached . 2>/dev/null || true

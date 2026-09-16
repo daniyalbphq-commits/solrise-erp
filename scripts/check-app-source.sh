@@ -15,6 +15,8 @@ set -euo pipefail
 
 SRC="${1:?usage: check-app-source.sh <path-to-solrise_erp-checkout>}"
 [ -d "${SRC}" ] || { echo "ERROR: not a directory: ${SRC}" >&2; exit 2; }
+# Physical path: the checks below compare it against a repository's top level.
+SRC="$(cd "${SRC}" && pwd -P)"
 
 missing=0
 found=0
@@ -57,17 +59,26 @@ check "assistant/engine.py" -path '*/assistant/engine.py'
 check "assistant/tools.py" -path '*/assistant/tools.py'
 check "api/v1.py" -path '*/api/v1.py'
 check "api/chat.py" -path '*/api/chat.py'
+check "chat/registry.py" -path '*/chat/registry.py'
+check "chat/nlp.py" -path '*/chat/nlp.py'
+check "chat/context.py" -path '*/chat/context.py'
+check "chat/menu.py" -path '*/chat/menu.py'
 check "chat/permissions.py" -path '*/chat/permissions.py'
 check "chat/intent.py" -path '*/chat/intent.py'
 check "chat/schema.py" -path '*/chat/schema.py'
 check "chat/executor.py" -path '*/chat/executor.py'
+check "chat/workflow.py" -path '*/chat/workflow.py'
 check "chat/audit.py" -path '*/chat/audit.py'
+check "tests/test_chat_nlp.py" -path '*/tests/test_chat_nlp.py'
+check "tests/test_chat_guardrails.py" -path '*/tests/test_chat_guardrails.py'
+check "fixtures/solrise_faq.json" -path '*/fixtures/solrise_faq.json'
+check "fixtures/workflow.json" -path '*/fixtures/workflow.json'
 
 echo
 echo "assets the widget needs:"
 check "public/js/solrise_chat.js" -name solrise_chat.js
 check "public/js/solrise_erp.js" -name solrise_erp.js
-check "logo svg" -name 'solrise-logo.svg'
+check "logo png" -name 'solrise-logo.png'
 
 echo
 echo "DocTypes (each needs a directory with its .json):"
@@ -77,13 +88,23 @@ for doctype in solrise_settings solrise_chat_log solrise_faq solrise_ai_audit_lo
 done
 
 echo
-if git -C "${SRC}" rev-parse --git-dir >/dev/null 2>&1; then
-  echo "git:"
+# `git -C` finds the enclosing repository, so this has to compare the repository's
+# top level with the app directory: when the app lives inside the deployment
+# repository (the normal layout here, gitignored), reporting that repository's
+# branch and commit would describe the wrong tree entirely.
+REPO_TOP="$(git -C "${SRC}" rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "${REPO_TOP}" ] && [ "$(cd "${REPO_TOP}" && pwd -P)" = "${SRC}" ]; then
+  echo "git: this directory is its own repository, so publish pushes its HEAD"
   printf '  branch   %s\n' "$(git -C "${SRC}" rev-parse --abbrev-ref HEAD)"
-  printf '  commit   %s   (the deployment .env last saw 0c7923cc8c274cfe51398422c938f5dd310944e3)\n' \
-    "$(git -C "${SRC}" rev-parse HEAD)"
+  printf '  commit   %s\n' "$(git -C "${SRC}" rev-parse HEAD)"
   printf '  remote   %s\n' "$(git -C "${SRC}" remote -v | head -1 || echo '(none)')"
   printf '  dirty    %s file(s)\n' "$(git -C "${SRC}" status --porcelain | wc -l)"
+elif [ -n "${REPO_TOP}" ]; then
+  echo "git: not its own repository (it lives inside ${REPO_TOP})"
+  echo "     publish stages a copy into an orphan branch of the app repository,"
+  echo "     so the enclosing repository's branch and commit do not apply."
+  printf '  dirty    %s file(s) in that enclosing repository\n' \
+    "$(git -C "${SRC}" status --porcelain | wc -l)"
 else
   echo "git: not a repository (the image build clones by URL - it must be pushed)"
 fi
