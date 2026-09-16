@@ -44,4 +44,16 @@ RUN /home/frappe/frappe-bench/env/bin/python /tmp/patch-cloud-storage.py \
 RUN /home/frappe/frappe-bench/env/bin/python -c \
       "import boto3, magic; print('cloud_storage runtime dependencies: OK')"
 
+# The app's browser assets. `bench init` writes sites/apps.txt *before* apps.json
+# is fetched, so the app this image bakes in never appears in it - and `bench
+# build`, which reads that list, therefore never linked the app's public/ into
+# assets/. nginx serves /assets from there, so without this the widget's JS and
+# the logo answer 404 even though the app is installed and running. Do what bench
+# does for the apps it does know about: register the app, then link it.
+RUN cd /home/frappe/frappe-bench \
+      && { grep -qx solrise_erp sites/apps.txt || echo solrise_erp >> sites/apps.txt; } \
+      && chown frappe:frappe sites/apps.txt \
+      && ln -sfn /home/frappe/frappe-bench/apps/solrise_erp/solrise_erp/public assets/solrise_erp \
+      && test -f assets/solrise_erp/js/solrise_chat.js
+
 USER frappe
