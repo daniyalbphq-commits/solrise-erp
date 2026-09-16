@@ -28,8 +28,10 @@
 #     CUSTOM_TAG           version-15   (must match custom_tag in
 #                                       infra/ansible/group_vars/all/main.yml)
 #     FRAPPE_BRANCH        version-15
-#     SOLRISE_APP_BRANCH   main         (must match solrise_app_branch in
-#                                       infra/ansible/group_vars/all/main.yml)
+#     SOLRISE_APP_BRANCH   solrise_erp-app (must match solrise_app_branch in
+#                                       infra/ansible/group_vars/all/main.yml; this
+#                                       is the default, so it is only needed to
+#                                       track a different branch)
 #
 # The token steps are in infra/PREREQUISITES.md section 4.
 # =============================================================================
@@ -76,7 +78,9 @@ jobs:
       CUSTOM_TAG: ${{ inputs.tag != '' && inputs.tag || vars.CUSTOM_TAG || 'version-15' }}
       FRAPPE_BRANCH: ${{ vars.FRAPPE_BRANCH || 'version-15' }}
       # Must match solrise_app_branch in infra/ansible/group_vars/all/main.yml.
-      SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'main' }}
+      # The default is the branch scripts/publish-app.sh publishes to, so a build
+      # needs only SOLRISE_APP_URL; set the variable only to track something else.
+      SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'solrise_erp-app' }}
 
     steps:
       - name: Guard the required registry credentials
