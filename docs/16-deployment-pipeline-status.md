@@ -4,8 +4,8 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-09-17 (live-host checks; section 5.1 is an acceptance list and
-section 5.4 records the interim deployment that needs no app).
+Last updated: 2026-09-17 (live-host checks; the application layer is deployed and
+verified - section 5.1 is the requirement, section 5.5 the evidence).
 
 ---
 
@@ -13,18 +13,20 @@ section 5.4 records the interim deployment that needs no app).
 
 ```mermaid
 flowchart TD
-    A[git push origin main] --> B{Paths filter<br/>apps.json, infra/image/**,<br/>scripts/build-image.sh}
+    A[git push origin main<br/>or solrise_erp-app] --> B{Paths filter<br/>apps.json, infra/image/**,<br/>scripts/build-image.sh, solrise_erp/**}
     B -->|matched| C[GitHub Actions build-image]
     B -->|not matched| Z[no image build]
-    C --> D[docker login + free disk]
+    C --> C0[resolve the app remote<br/>git ls-remote, then bake]
+    C0 --> D[docker login + free disk]
     D --> E[scripts/build-image.sh<br/>frappe base + apps.json:<br/>erpnext, hrms, solrise_erp]
-    E --> F[infra/image/patch-cloud-storage.py<br/>4 patches, fails the build if stale]
+    E --> F[infra/image/Containerfile<br/>cloud_storage patches + link<br/>the app's assets, fail if absent]
     F --> G[docker.io/daniyalbphq/solrise:version-15]
     G --> H[ansible-playbook site.yml<br/>MANUAL today]
     H --> I[pull image + make aws-up]
     I --> J[recreate app containers<br/>redis + Traefik untouched]
-    J --> K[create-site.sh<br/>install missing apps + migrate<br/>branding, RBAC, workflows, reports]
-    K --> M[verify_app_layer.py<br/>white labeling + assistant + chat]
+    J --> J0[register-apps.sh<br/>apps.txt + assets + global caches]
+    J0 --> K[create-site.sh<br/>install missing apps + migrate<br/>branding, RBAC, workflows, reports]
+    K --> M[verify_app_layer.py + verify_chat.py<br/>branding, assistant, chat, widget]
     M --> N[setup-media.sh<br/>S3 media round trip]
     N --> L[Traefik TLS -> backend<br/>RDS MariaDB + S3 media]
 ```
@@ -34,7 +36,7 @@ Two stages are automated, one is not:
 | Stage | Status | Trigger |
 |---|---|---|
 | Terraform provisioning (EC2, RDS, S3, IAM) | Working, manual | `cd infra/terraform && terraform apply` |
-| Image build + push to Docker Hub | **Automated** | push to `main` touching `apps.json`, `apps.example.json`, `infra/image/**`, `scripts/build-image.sh`, `scripts/push-image.sh`, `scripts/apps-fingerprint.py`, or the workflow; or `gh workflow run build-image.yml` |
+| Image build + push to Docker Hub | **Automated** | push to `main` touching `apps.json`, `apps.example.json`, `infra/image/**`, `scripts/build-image.sh`, `scripts/push-image.sh`, `scripts/apps-fingerprint.py`, or the workflow; **or a push to `solrise_erp-app`** (publishing the app, `scripts/publish-app.sh`, rebuilds the image); or `gh workflow run build-image.yml` |
 | Deploy on the host (pull, rollout, site + apps + branding, media, verification) | Manual | `cd infra/ansible && ansible-playbook site.yml --ask-vault-pass` |
 
 There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
@@ -52,7 +54,7 @@ There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 | Image source | Docker Hub `docker.io/daniyalbphq/solrise:version-15` (**private repo**); ECR is unused (`ecr_repository_url` is empty) |
 | Apps in the image | `erpnext`, `hrms`, `solrise_erp` (from `${SOLRISE_APP_URL}`), `cloud_storage` - baked by CI from `apps.json`. Until 2026-09-16 the Solrise app was missing here, so the image carried no branding and no chat |
 | Apps on the site | `INSTALL_APPS` from the rendered `.env` (`install_apps` + `solrise_erp` + `cloud_storage` when those features are on); `scripts/create-site.sh` installs any that the site is missing |
-| Application layer today | `solrise_app_enabled: false` (the app has no repository to build from) - so the site carries the repository + fixture half of it instead: branding, RBAC, module settings, SLA, workflows, notifications, reports, dashboards. See [§5.4](#54-interim-what-is-deployed-without-the-app-2026-09-17) |
+| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository, baked in by CI and installed by `scripts/create-site.sh`. See [§5.5](#55-the-app-layer-deployed-2026-09-17) for the live evidence, and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) for the app-less interim it replaced |
 | Repo / remote | `git@github.com:daniyalbphq-commits/solrise-erp.git` (remote `origin`). `core.sshCommand` pins `~/.ssh/id_ed25519_bphq`, which authenticates as `daniyalbphq-commits`; the default key authenticates as `DaniyalM`, who can read the (public) repo but is refused write: `Permission ... denied to DaniyalM` |
 | Repo on the host | `/opt/solrise-erp` (cloned by the Ansible role, so it carries the dirty file modes the role's chmod task causes) |
 
@@ -142,17 +144,19 @@ PY
 
 ## 5. The application layer: white labeling, chat and the rest of the product
 
-**Status: acceptance list, not evidence.** Until 2026-09-16 the AWS deployment
-shipped **without the Solrise application layer**: `apps.json` had lost its
-`${SOLRISE_APP_URL}` entry (commit `d969821`, "Prod build working") when the first
-AWS build had to pass, so the image was plain platform + HRMS and the site had no
-Solrise branding, no assistant, no universal chat, no RBAC fixtures, no reports
-and no dashboards. The configuration is fixed - the app is in `apps.json`, in
-`INSTALL_APPS`, installed on sites that already exist, and checked by the deploy -
-but the app itself has **no repository to build from**, so nothing can be built
-into an image yet (§6 item 8). **Section 5.4 records what was deployed instead.**
-Treat the table as the requirement, section 3 as the evidence, and move each row
-up to section 3 once you have run its check.
+**Status: deployed 2026-09-17, verified on the live site.** Until 2026-09-17 the
+AWS deployment shipped **without the Solrise application layer**: `apps.json` had
+lost its `${SOLRISE_APP_URL}` entry (commit `d969821`, "Prod build working") when
+the first AWS build had to pass, so the image was plain platform + HRMS and the
+site had no Solrise branding, no assistant, no universal chat, no RBAC fixtures, no
+reports and no dashboards.
+
+The app's source was then lost, so it was rebuilt from `docs/06`, `docs/07`,
+`docs/10`, `docs/11` and `docs/12`, published on the **`solrise_erp-app` branch of
+this repository** (`scripts/publish-app.sh`), baked into the image by CI
+(`apps.json`), installed by `scripts/create-site.sh`, and is now live. Section 5.1
+is the requirement, section 3 the evidence, section 5.5 what this deployment
+actually did and where it hurt.
 
 ### 5.1 What the deploy must deliver
 
@@ -177,32 +181,48 @@ up to section 3 once you have run its check.
 
 ```mermaid
 flowchart LR
-    A[apps.json + SOLRISE_APP_URL] --> B[CI image] --> C[.env INSTALL_APPS]
-    C --> D[create-site.sh<br/>install anything missing] --> E[bench migrate]
-    E --> F[after_migrate -> apply_all<br/>branding, RBAC, workflows,<br/>notifications, reports]
-    F --> G[verify_app_layer.py<br/>gates the deploy]
+    A[solrise_erp-app branch] --> B[apps.json + SOLRISE_APP_URL] --> C[CI image]
+    C --> D[register-apps.sh<br/>apps.txt + assets + global caches]
+    D --> E[create-site.sh<br/>install anything missing] --> F[bench migrate]
+    F --> G[after_migrate -> apply_all<br/>branding, RBAC, workflows,<br/>notifications, reports]
+    G --> H[verify_app_layer.py<br/>+ verify_chat.py gate the deploy]
 ```
 
+* **`solrise_erp-app`** is the app, published as the root of its own branch of this
+  repository by `scripts/publish-app.sh` (an orphan branch whose tree IS a Frappe
+  app). The workflow watches that branch as well as `main`, so publishing the app
+  rebuilds the image without a second, unrelated commit.
 * **`apps.json`** (repo root) is the app list, and `${SOLRISE_APP_URL}` /
   `${SOLRISE_APP_BRANCH}` are expanded from the environment, so one file works on
-  any host. CI needs the `SOLRISE_APP_URL` secret and fails with an actionable
-  error when it is empty; the build-on-the-host fallback reads `solrise_app_url`
-  from `group_vars/all/main.yml`. The URL is mounted as a BuildKit **secret**, so
-  a token in it never reaches an image layer.
+  any host. `SOLRISE_APP_URL` is **optional**: the build defaults it to this
+  repository (the app lives here) and only uses the secret when the app is in
+  another repository. Before the bake it reads the branch with `git ls-remote` and
+  either falls back to this repository with a warning or fails with the host and
+  path - never the credentials. The URL is mounted as a BuildKit **secret**, so a
+  token in it never reaches an image layer.
 * **`effective_install_apps`** (role fact) appends `solrise_erp` when
   `solrise_app_enabled` is true (default) and `cloud_storage` when
   `s3_media_enabled` has a bucket to talk to.
+* **`scripts/register-apps.sh` registers the apps the image carries** (§5.5, the
+  trap that cost the most). `sites/` is a volume, so it shadows the image's own
+  `sites/apps.txt`: an app a rebuild bakes in is present under `apps/` but unknown
+  to bench. It writes the missing names, links each app's `public/` into `assets/`,
+  and clears the bench-wide caches (`app_hooks`, `all_apps`, `installed_apps`,
+  `assets_json`) that would otherwise keep the app invisible. `create-site.sh` runs
+  it before installing anything; `clear-cache.sh` runs it on every rollout.
 * **`scripts/create-site.sh` installs anything missing** before it migrates. The
   `create-site` service only installs `INSTALL_APPS` when it *creates* the site,
   so without this step a newly added app would be in the image and never on the
   site - which is exactly how the live site would have stayed unbranded.
 * **`bench migrate`** runs `after_migrate` -> `solrise_erp.install.apply_all()`:
   branding, workspaces, roles/permissions, workflows, notifications, reports,
-  dashboards and the app's DocTypes.
+  dashboards and the app's DocTypes, plus the app's own `fixtures/`.
 * **`scripts/verify_app_layer.py`** (`SITE_ENV=aws make verify`) fails the deploy
   when the app, the branding, the assistant/chat entry points or the
-  configuration artifacts are missing. Anything only a human can decide is
-  reported as a `warn`, not a failure.
+  configuration artifacts are missing. **`scripts/verify_chat.py`**
+  (`SITE_ENV=aws make verify-chat`) has a conversation with the deployed chat and
+  checks the widget's delivery. Anything only a human can decide is reported as a
+  `warn`, not a failure.
 
 ### 5.3 What no deploy can do for you
 
@@ -226,13 +246,15 @@ These are the operator's, and they are the difference between "installed" and
   run it (`docs/08-execution-checklist.md` section 2.5).
 * **Real users** - named accounts with the Stage 2 roles, 2FA on `Administrator`.
 
-### 5.4 Interim: what is deployed **without** the app (2026-09-17)
+### 5.4 The app-less interim (2026-09-16, superseded)
 
-The app has no repository to build from (§6 item 8), so it cannot be in the
-image. Everything in §5.1 that lives in *this* repository, or in the app's
-exported fixtures, was deployed directly to `erp.solrise.online` instead - after a
-backup (`/opt/solrise-erp/backups/20260916-174016/`) and with `bench migrate` left
-to the next deploy:
+The app had no source to build from, so it could not be in the image. Everything in
+§5.1 that lives in *this* repository, or in the app's exported fixtures, was
+deployed directly to `erp.solrise.online` instead - after a backup
+(`/opt/solrise-erp/backups/20260916-174016/`) and with `bench migrate` left to the
+next deploy. Kept because it is the history of the live database, and because
+`scripts/branding_only.py` and `scripts/import_app_fixtures.py` are still what makes
+the app-less path work.
 
 | Requirement | Delivered by | Evidence on the live site |
 |---|---|---|
@@ -254,9 +276,10 @@ SITE_ENV=aws ./scripts/run-python.sh scripts/branding_only.py   # BRANDING_RENAM
 SITE_ENV=aws ./scripts/import_app_fixtures.sh
 ```
 
-The deploy runs the last two automatically while `solrise_app_enabled: false`
-(`infra/ansible/roles/solrise`). Both are idempotent, and both report what they
-skipped and why.
+The deploy runs the last two automatically only while `solrise_app_enabled: false`
+(`infra/ansible/roles/solrise`); with the app deployed they are a fallback for a
+site that has lost it, and the app's own `fixtures/` do the work. Both are
+idempotent, and both report what they skipped and why.
 
 > Two import details worth keeping: the fixtures' `module: "Solrise ERP"` link is
 dropped (only the app declares that Module Def), and the dashboard charts'
@@ -268,7 +291,63 @@ When the app is found: add `SOLRISE_APP_URL`, set `solrise_app_enabled: true`, a
 the deploy takes over - `install-app` + `after_migrate` re-applies workflows,
 notifications, reports and dashboards with their app-owned metadata, and
 `make verify` gates the result (the interim records already exist, so the app
-updates them in place rather than duplicating them).
+updates them in place rather than duplicating them). That is what happened next.
+
+### 5.5 The app layer, deployed (2026-09-17)
+
+The app is rebuilt and live. `solrise_erp-app` (commit `4655516` at the time of
+writing) is the app branch; image build run 9 baked it in; the host pulled it,
+`create-site.sh` installed it, `bench migrate` applied its DocTypes and fixtures,
+and both verification scripts pass against `erp.solrise.online`.
+
+| Check | Command | Result |
+|---|---|---|
+| The app is on the site | `bench --site erp.solrise.online list-apps` | `solrise_erp 1.0.0` alongside frappe/erpnext/hrms/cloud_storage |
+| The application layer | `SITE_ENV=aws make verify` | branding, roles, 4 workflows, 9 reports, dashboard, notifications all `ok` |
+| The chat, end to end | `SITE_ENV=aws make verify-chat` | menu (8 entries), quick action -> missing-field question -> cancel, a read resolving to `Found 0 Issues.`, 4 audit rows written, injection phrase inert, anonymous turn refused |
+| The widget's delivery | same script | `app_include_js`/`web_include_js` include it, the JS and logo are served, the cached manifest matches the image |
+| The browser | `curl -s https://erp.solrise.online/login` | `Login to Solrise`, widget `<script>`, bundles `200 text/css` |
+
+The last two rows matter: the chat answered on every endpoint for two rounds while
+the widget could not load at all.
+
+**What each failure was, so it is not re-learned:**
+
+1. **`pip install -e .` needs a version.** `pyproject.toml` declares
+   `dynamic = ["version"]`, so flit reads `__version__` from the package. The empty
+   `__init__.py` failed metadata generation and the image build died in the app
+   fetch, five minutes in, with no clue which input was wrong. The workflow now
+   resolves the app URL before the bake and names it (never its credentials) when
+   it cannot be read.
+2. **`sites/` is a volume and shadows the image's `sites/apps.txt`.** An app a
+   rebuild bakes in is under `apps/` but unknown to bench, so
+   `bench install-app` refuses ("App solrise_erp not in apps.txt") - and
+   `app_include_js`/`web_include_js` are ignored even once it is installed, because
+   Frappe intersects the site's installed apps with `get_all_apps()` (read from
+   that file) *before* loading hooks. `scripts/register-apps.sh` fixes both, and
+   clears `app_hooks`/`all_apps`/`installed_apps`/`assets_json`, which cache the
+   old answer.
+3. **nginx serves `/assets` from the bench's `assets/` dir, which is in the image.**
+   `bench init` writes `apps.txt` before `apps.json` is fetched, so `bench build`
+   never linked the app's `public/` and `/assets/solrise_erp/*` answered 404 (with
+   an HTML fallback, so the browser refused it as a stylesheet/script).
+   `infra/image/Containerfile` now registers the app and creates the link, and
+   fails the build if the file is not there.
+4. **The asset manifest is cached in Redis** (`assets_json`). It held an older
+   image's hashes, so every hashed `/assets/*.css` 404ed and the site rendered with
+   no CSS at all. `scripts/clear-cache.sh` clears it on every rollout - and the
+   app's own DocTypes made the site render *more* pages that noticed.
+5. **Fixtures must not claim to be standard.** `Dashboard Chart.validate` throws
+   "Cannot edit Standard charts" outside developer mode, so `migrate` stopped on
+   `is_standard: 1` in the app's `dashboard_chart.json`. It is `0` now, and
+   `custom_docperm.json` is deliberately not shipped at all (docs/11 rule 3).
+6. **`create-site` sits behind the `init` profile**, so
+   `compose run --rm create-site` reported "missing services" and the deploy
+   stopped before touching the site. `restore.sh` already named the profile;
+   `create-site.sh` does now too.
+7. **Restarting the backend alone leaves nginx on a stale IP** (`502 Bad Gateway`
+   for the whole site). Restart the frontend as well; a rollout recreates both, so
+   this only bites when you restart one by hand.
 
 ## 6. Open items
 
@@ -315,39 +394,44 @@ updates them in place rather than duplicating them).
 7. **`path` filters mean unrelated pushes build nothing.** A docs-only or
    Ansible-only push will not trigger `build-image` - that is intended, but it also
    means a broken image can only be caught by a push that touches the build inputs.
-8. **`apps/solrise_erp` does not exist anywhere reachable - this is the blocker
-   for everything in section 5.1.** Checked 2026-09-17, exhaustively: this working
-   copy (no `apps/` at all), the repo's entire git history, the whole filesystem of
-   the workstation and of the EC2 host, every podman layer/volume/container on
-   both, and GitHub (`DaniyalM/solrise_erp` and
+8. ~~**`apps/solrise_erp` does not exist anywhere reachable.**~~ **Resolved
+   2026-09-17:** the app's source was lost for good (the exhaustive search below
+   found only the local `git daemon` URL in this repo's `.env`), so it was rebuilt
+   from the docs, published on the `solrise_erp-app` branch of this repository and
+   deployed - see §5.5.
+
+   <details><summary>the original search (kept so it is not repeated)</summary>
+
+   This working copy (no `apps/` at all), the repo's entire git history, the whole
+   filesystem of the workstation and of the EC2 host, every podman
+   layer/volume/container on both, and GitHub (`DaniyalM/solrise_erp` and
    `daniyalbphq-commits/solrise_erp` are both 404; neither project repo,
    `daniyalbphq-commits/solrise-erp` nor `DaniyalM/solrise-erp`, contains it). The
-   only trace is this repo's `.env`: `SOLRISE_APP_URL=git://host.containers.internal:9418/solrise_erp`
-   with `SOLRISE_APP_REV=0c7923cc8c274cfe51398422c938f5dd310944e3` - a local
+   only trace was this repo's `.env`:
+   `SOLRISE_APP_URL=git://host.containers.internal:9418/solrise_erp` with
+   `SOLRISE_APP_REV=0c7923cc8c274cfe51398422c938f5dd310944e3` - a local
    `git daemon` served it from the machine that ran the local/VPS stack, and that
-   clone was never pushed. Until it is found or re-created, the deployment cannot
-   carry the assistant, the universal chat, `Solrise Settings`, the FAQ, the Desk
-   boot patches or the app's scheduler jobs. See §5.4 for what runs instead.
-9. **`SOLRISE_APP_URL` has to exist before the next image build.** The app remote
-   in `group_vars` is `https://github.com/DaniyalM/solrise_erp`, which answers
-   `404` unauthenticated, so the secret must carry access to it
-   (`https://x-access-token:<PAT>@github.com/DaniyalM/solrise_erp`). Without it
-   the workflow stops at *Write .env for the build* on purpose, instead of
-   silently shipping an image with no branding and no chat. `SOLRISE_APP_BRANCH`
-   (`main`) must stay in step with `solrise_app_branch`. While both are unresolved,
-   `apps.json` still references `${SOLRISE_APP_URL}`, so **any push to `main`
-   fails the image build until the app repository exists** - that is deliberate,
-   but it also blocks unrelated image fixes; the escape hatch is to remove the
-   entry from `apps.json` (and leave `solrise_app_enabled: false`).
-10. **The assistant is not configured on the live site.** Even with the app
-    installed, `Solrise Settings` has no provider or key, so "Ask Solrise" and
-    the chat's LLM fallback answer nothing until an operator sets them
-    (section 5.3). A messaging channel is likewise absent. Both are business
-    decisions, and both are the difference between *installed* and *usable*.
-11. **`scripts/verify_app_layer.py` is new and has not run against a live host.**
-    Its failure list is the acceptance list in section 5.1. Run
-    `SITE_ENV=aws make verify` on the host after the next deploy and fold the
-    result back into section 3 (and fix whatever it catches).
+   clone was never pushed.
+
+   </details>
+9. **The `SOLRISE_APP_URL` secret holds a value the build cannot read, and is no
+   longer needed.** The workflow now defaults the app source to this repository
+   (where the app's branch lives), warns when a configured remote cannot be read,
+   and only fails when neither is reachable - which is why run 9 built anyway. A
+   leftover secret still *wins* over the default, so delete it (or point it at the
+   repository that holds the app) to stop the warning on every build. An SSH URL
+   can never work: CI has no key, hence the `git ls-remote` check.
+10. **The assistant is not configured on the live site.** `Solrise Settings` has
+    no provider and no key, so "Ask Solrise" and the chat's LLM fallback answer
+    nothing until an operator sets them (section 5.3; `make verify-chat` reports
+    both as warnings). The deterministic chat works without it - the menu, ticket
+    creation, lookups, approvals and the audit trail are all live. A messaging
+    channel is likewise absent. Both are business decisions, and both are the
+    difference between *installed* and *usable*.
+11. **`verify_app_layer.py` and `verify_chat.py` have now run against a live host**
+    (`make verify`, `make verify-chat`) - see §5.5 for what they reported. Keep
+    them in step with section 5.1: a new requirement needs a check here, or it is
+    an acceptance list again.
 
 ## 7. Things that bit us (do not relearn these)
 

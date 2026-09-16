@@ -186,6 +186,61 @@ The `local-up` / `prod-up` / `aws-up` / `aws-rollout` targets and the Ansible
 deploy call `scripts/clear-cache.sh` for you, so this should only be needed by
 hand after an improvised rollout.
 
+### The chat answers, but the widget never appears
+
+Every chat endpoint is healthy - `api.chat.bootstrap` returns a menu, `api.chat.turn`
+creates tickets, `Solrise AI Audit Log` fills up - and there is no "Ask Solrise"
+button anywhere, because `/assets/solrise_erp/js/solrise_chat.js` answers `404`.
+
+Three independent things have to hold, and each one fails quietly:
+
+1. **The app must be in the bench's `sites/apps.txt`.** It is a *volume*, so it
+   shadows the image's own copy: an app a rebuild bakes in is present under
+   `apps/` but unknown to bench. `bench install-app` then refuses outright ("App X
+   not in apps.txt"), and - worse, because it is invisible - Frappe ignores the
+   app's `app_include_js` / `web_include_js` even after it is installed: it
+   intersects the site's installed apps with `get_all_apps()` (read from this
+   file) *before* it loads any hooks.
+2. **Frappe's bench-wide caches must be cleared after that.** `app_hooks`,
+   `all_apps` and `installed_apps` cache the old answer, so editing the file is not
+   enough on its own.
+3. **The app's `public/` must be linked from the bench's `assets/` dir**, which is
+   in the image (nginx serves `/assets` from there). `bench init` writes
+   `apps.txt` before `apps.json` is fetched, so `bench build` never created that
+   link; `infra/image/Containerfile` now does, and fails the build if the file is
+   missing.
+
+Confirm, then fix (the fix is idempotent and is what `create-site.sh` and
+`clear-cache.sh` now call):
+
+```bash
+podman exec solrise_backend_1 cat /home/frappe/frappe-bench/sites/apps.txt
+podman exec solrise_backend_1 ls -l /home/frappe/frappe-bench/assets/ | grep solrise
+curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/assets/solrise_erp/js/solrise_chat.js
+
+SITE_ENV=aws ./scripts/register-apps.sh
+```
+
+`SITE_ENV=aws make verify-chat` checks all three (`app_include_js`/`web_include_js`,
+file sizes, and that the cached manifest matches the image), so a regression here
+fails a deploy instead of looking like a styling problem.
+
+> The CSS entry above and this one share a symptom and a cause: something derived
+> from the image is cached outside it (Redis), and a rollout does not update it.
+
+### 502 for the whole site after restarting one container
+
+Restarting the backend by hand gives nginx a new IP for it, and the `frontend`
+container keeps proxying to the old one - every request answers `502 Bad Gateway`
+until the frontend restarts too:
+
+```bash
+podman restart solrise_frontend_1
+```
+
+A rollout recreates both, so this only bites when you restart one container
+manually.
+
 ### `bench migrate` fails after an upgrade
 
 Almost always a schema drift from a skipped release. Read the first traceback,

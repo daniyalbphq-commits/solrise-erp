@@ -124,8 +124,8 @@ terraform output rds_endpoint
 ## 2. Build the image in CI (GitHub Actions)
 
 Set the repository secrets from `PREREQUISITES.md` §4 (`DOCKERHUB_USERNAME`,
-`DOCKERHUB_TOKEN`, `SOLRISE_APP_URL`), then either push to `main` or run the
-workflow by hand:
+`DOCKERHUB_TOKEN`; `SOLRISE_APP_URL` only if the app lives elsewhere), then either
+push to `main` (or to `solrise_erp-app`) or run the workflow by hand:
 
 ```bash
 gh workflow run build-image.yml -f tag=version-15
@@ -140,12 +140,15 @@ you set the `CUSTOM_IMAGE` variable, so the default result is:
 docker.io/<DOCKERHUB_USERNAME>/solrise:version-15
 ```
 
-`SOLRISE_APP_URL` is **required**: the image bakes the Solrise application layer
-(white labeling, RBAC, assistant, universal chat, reports) from that git remote,
-so an empty value stops the workflow with an actionable error instead of shipping
-a bare ERPNext image. Use `https://x-access-token:<PAT>@github.com/<owner>/<app>`
-when the app repository is private, and keep `SOLRISE_APP_BRANCH` (`main`) in step
-with `solrise_app_branch` in `group_vars/all/main.yml`.
+The Solrise app lives on the **`solrise_erp-app` branch of this repository** as the
+root of its own tree (`scripts/publish-app.sh` publishes it), so `SOLRISE_APP_URL`
+is **optional**: the workflow resolves it before the bake, defaults it to this
+repository, and only fails when neither that nor a configured remote is readable
+(it names the host and path, never the credentials). Set the secret only when the
+app lives in another repository - `https://x-access-token:<PAT>@github.com/<owner>/<app>`
+for a private one - and keep `SOLRISE_APP_BRANCH` (`solrise_erp-app`) in step with
+`solrise_app_branch` in `group_vars/all/main.yml`. Publishing the app triggers the
+same build, so an app change does not need an unrelated commit here.
 
 `CUSTOM_TAG` (GitHub) must equal `custom_tag`, and the effective image name must
 equal `custom_image`, in `infra/ansible/group_vars/all/main.yml` - otherwise the
@@ -249,7 +252,8 @@ deployment contract at three points:
 
 | Layer | What it does | Where it is configured |
 |---|---|---|
-| `apps.json` → `${SOLRISE_APP_URL}` | bakes the app into the image in CI (with `erpnext`, `hrms`, `cloud_storage`) | `apps.json`, GitHub secret `SOLRISE_APP_URL` |
+| `apps.json` → `${SOLRISE_APP_URL}` | bakes the app into the image in CI (with `erpnext`, `hrms`, `cloud_storage`); the app is published on the `solrise_erp-app` branch of this repository by `scripts/publish-app.sh` | `apps.json`, `scripts/publish-app.sh`, optional GitHub secret `SOLRISE_APP_URL` |
+| Making the image's apps reachable to the site | `scripts/register-apps.sh` writes them into the bench's `sites/apps.txt` (a volume, so it shadows the image's copy), links their `public/` into `assets/` and clears the bench-wide caches - without it `install-app` refuses and the app's JS is never included | `SITE_ENV=aws ./scripts/register-apps.sh`, then `make verify-chat` |
 | `install_apps` → `INSTALL_APPS` | installs it on the site; `create-site.sh` also installs it on a site that already exists | `group_vars/all/main.yml` (`solrise_app_enabled`) |
 | `after_migrate` → `solrise_erp.install.apply_all()` | applies everything below, idempotently, on every `bench migrate` | the app (no site configuration needed) |
 
@@ -366,6 +370,7 @@ on the EBS volume (and are what the S3 sync protects).
 |---|---|
 | Stack status | `SITE_ENV=aws make ps` (or `make aws-logs`) |
 | Application layer check | `SITE_ENV=aws make verify` |
+| Chat behaviour + widget delivery | `SITE_ENV=aws make verify-chat` |
 | Clear caches (after a rollout, or if the site renders unstyled) | `SITE_ENV=aws make clear-cache` |
 | Shell on the host | `ssh ubuntu@<eip>` or `aws ssm start-session --target <instance-id>` |
 | Bench shell | `podman exec -it solrise-backend bash` |
@@ -393,20 +398,22 @@ ECR repository is retained unless you remove it too.
 ## Known limitations / follow-ups
 
 - **The application layer is a hard dependency of the image build.** `apps.json`
-  bakes `solrise_erp` from `${SOLRISE_APP_URL}`, and the workflow stops with an
-  actionable error when that secret is empty rather than shipping a bare ERPNext
-  image (white labeling, the assistant and the universal chat all live in that
-  app). If the app repository is genuinely unavailable, delete the entry from
-  `apps.json` and set `solrise_app_enabled: false` (that flag is what appends
-  `solrise_erp` to `INSTALL_APPS` and runs the verification) - the deployment then
-  works but is plain platform + HRMS.
-- **The app layer has never been deployed to the live AWS host.** The first
-  `ansible-playbook` run after `apps.json` regained the app is the one that
-  installs it, and `scripts/verify_app_layer.py` is new - run
-  `SITE_ENV=aws make verify` and fold the result back into
-  `docs/16-deployment-pipeline-status.md` §3. Take a backup first: the app's
-  `install-app` + `migrate` writes roles, permissions and workflows on a live
-  site.
+  bakes `solrise_erp` from `${SOLRISE_APP_URL}`, which defaults to this repository
+  (the app's branch lives here), so a build needs no app secret at all; the
+  workflow only fails when neither the configured remote nor this repository can
+  be read. White labeling, the assistant and the universal chat all live in that
+  app: delete the entry from `apps.json` and set `solrise_app_enabled: false` (that
+  flag is what appends `solrise_erp` to `INSTALL_APPS` and runs the verification)
+  to ship plain platform + HRMS deliberately.
+- **The app layer is live on the AWS host (2026-09-17)** - installed, verified by
+  `make verify` and `make verify-chat`, with the widget loading in the browser. See
+  `docs/16-deployment-pipeline-status.md` §5.5 for the evidence and the traps it
+  cost. `make verify` still reports the assistant as unconfigured until a provider
+  key is set in `Solrise Settings` (§7.3 here).
+- **The deploy is still manual.** A *fresh* host gets the app through
+  `create-site.sh` (which registers the image's apps, installs them and migrates)
+  and is gated by `scripts/verify_app_layer.py`; take a backup first, because
+  `install-app` + `migrate` writes roles, permissions and workflows on a live site.
 - The **rootless user systemd unit** is the one piece that needs verification on a
   live host: `systemctl --user status solrise` should show it active after
   `loginctl enable-linger`. (The repo previously relied only on container restart
