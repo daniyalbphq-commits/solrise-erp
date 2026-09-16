@@ -50,7 +50,8 @@ There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 | Site / domain | `erp.solrise.online` (Traefik v3.7, Let's Encrypt `daniyalbphq@gmail.com`) |
 | Database | RDS MariaDB `solrise-db.cyj2g0qsc566.us-east-1.rds.amazonaws.com:3306`, master `solrise_admin`, password only in Secrets Manager |
 | Media | `s3://solrise-media-358254890883/solrise/` (private, versioned, AES256, TLS-only) |
-| Backups | `s3://solrise-backups-358254890883` exists, but the S3 sync is **off** (`backup_s3_enabled: false`) |
+| Backups | RDS automated backups + point-in-time recovery, **35 days** (the maximum) - free, because backup storage is included up to 100% of the 50 GiB provisioned and the site uses ~0.5 GiB. `s3://solrise-backups-358254890883` exists, but the S3 sync is **off** (`backup_s3_enabled: false`) |
+| Database cost | `db.t4g.small` Single-AZ ($23.36/month) + 50 GiB gp3 ($5.75/month) = **~$29/month**; Multi-AZ and Performance Insights are off. `db.t4g.micro` would be $11.68/month (see `infra/README.md` §11) |
 | Image source | Docker Hub `docker.io/daniyalbphq/solrise:version-15` (**private repo**); ECR is unused (`ecr_repository_url` is empty) |
 | Apps in the image | `erpnext`, `hrms`, `solrise_erp` (from `${SOLRISE_APP_URL}`), `cloud_storage` - baked by CI from `apps.json`. Until 2026-09-16 the Solrise app was missing here, so the image carried no branding and no chat |
 | Apps on the site | `INSTALL_APPS` from the rendered `.env` (`install_apps` + `solrise_erp` + `cloud_storage` when those features are on); `scripts/create-site.sh` installs any that the site is missing |

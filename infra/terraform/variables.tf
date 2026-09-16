@@ -151,9 +151,21 @@ variable "db_multi_az" {
 }
 
 variable "db_backup_retention_days" {
-  description = "Automated snapshot retention / PITR window in days (0 disables)."
+  # RDS keeps up to 35 days, and the automated backups (daily snapshot plus the
+  # transaction logs that give point-in-time recovery) are stored free up to 100%
+  # of the provisioned storage. A Frappe site of a few hundred MB therefore gets
+  # the longest possible recovery window at no extra cost, so the default is the
+  # maximum rather than the usual 14. Lower it, or set 0, only to remove the PITR
+  # window deliberately.
+  description = "Automated snapshot retention / PITR window in days (0 disables, 35 is the RDS maximum)."
   type        = number
-  default     = 14
+
+  validation {
+    condition     = var.db_backup_retention_days >= 0 && var.db_backup_retention_days <= 35
+    error_message = "RDS accepts a backup retention period between 0 and 35 days."
+  }
+
+  default = 35
 }
 
 variable "db_apply_immediately" {

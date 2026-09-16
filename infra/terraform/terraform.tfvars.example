@@ -31,7 +31,11 @@ db_instance_class          = "db.t4g.medium"
 db_allocated_storage       = 50
 db_username                = "solrise_admin"
 db_multi_az                = false
-db_backup_retention_days   = 14
+# 0-35 days. Automated backups (the daily snapshot and the transaction logs behind
+# point-in-time recovery) are stored free up to 100% of the provisioned storage,
+# so for a small site the maximum window costs nothing extra - 14 is the usual
+# default, 35 is the RDS maximum.
+db_backup_retention_days   = 35
 db_deletion_protection     = true
 db_skip_final_snapshot     = false
 

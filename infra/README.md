@@ -395,6 +395,44 @@ cd infra/terraform && terraform destroy
 The EBS volumes are deleted with the instance; RDS keeps its final snapshot. The
 ECR repository is retained unless you remove it too.
 
+## 11. Keeping the cloud bill down
+
+On-demand list prices for `us-east-1` (queried from the AWS Price List API; they
+drift, re-check before quoting them). The live stack is a `db.t4g.small`
+Single-AZ database with 50 GiB of gp3 and a `t3.medium` EC2 host.
+
+| Line | Now | Cheapest that still works | Note |
+|---|---|---|---|
+| RDS compute | `db.t4g.small` Single-AZ, **$23.36/month** | `db.t4g.micro`, **$11.68/month** | 2 vCPU / 2 GiB -> 2 vCPU / 1 GiB. `innodb_buffer_pool_size` is derived from the class (`{DBInstanceClassMemory*3/4}`), so the buffer pool drops to ~768 MB: fine for a site of a few thousand records, and the first thing to raise again when real users arrive |
+| RDS storage | 50 GiB gp3, **$5.75/month** ($0.115/GiB-month) | 20 GiB gp3 would be $2.30/month | **RDS storage only grows** - shrinking needs a snapshot restore into a new instance, so this is rarely worth the move. It also sets the free backup allowance |
+| RDS backups | **$0** | $0 | Automated backups and the transaction logs behind point-in-time recovery are stored **free up to 100% of the provisioned storage** (50 GiB here, against a ~0.5 GiB database). That is why `db_backup_retention_days` defaults to the maximum of 35: the longest recovery window costs nothing extra at this size. It stops being free if the database grows to tens of GiB |
+| RDS Multi-AZ | off | off | Already off; it would double the compute line |
+| Performance Insights | off | off | Already off; the 7-day retention tier is free, longer is not |
+| EC2 host | `t3.medium`, ~$30/month + 80 GiB gp3 (~$6.4/month) | `t3.small` (~$15/month) | Frappe runs 2 gunicorn workers plus queue, scheduler, websocket, 2 Redis and Traefik containers, so 2 GiB of RAM is the practical floor; the role adds 4 GiB of swap, which makes it survival rather than comfortable |
+| Public IPv4 | ~$3.65/month | - | Charged for the EC2 Elastic IP whether or not the instance is running |
+| S3 | pennies | pennies | Media objects and any backups; lifecycle rules are already set |
+
+The two levers that matter are the **RDS instance class** (~$140/year) and the
+**EC2 instance type**. The RDS one is a single line in `infra/terraform/terraform.tfvars`:
+
+```hcl
+db_instance_class        = "db.t4g.micro"
+```
+
+`terraform apply` modifies the instance in place, which **reboots it briefly** -
+immediately when `db_apply_immediately = true`, otherwise in the maintenance
+window (Sundays 19:00-20:00 UTC). Everything else in the list is already at its
+cheapest setting, and the retention window is free, so this is the only RDS
+optimisation left.
+
+> If the site is going to sit unused for a while, the real saving is to stop what
+> is not needed. A **stopped** RDS instance bills storage but not compute (AWS
+> restarts it automatically after 7 days), and a stopped EC2 instance bills its
+> EBS volume and the Elastic IP but not the compute hours. That takes the ERP
+> offline - the two commands are `aws rds stop-db-instance --db-instance-identifier
+> solrise-db` and `aws ec2 stop-instances --instance-ids <id>` - and
+> `make aws-up` on the host brings the stack back once the instance is running.
+
 ## Known limitations / follow-ups
 
 - **The application layer is a hard dependency of the image build.** `apps.json`
