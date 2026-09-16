@@ -23,14 +23,19 @@ terraform apply  ->  GitHub Actions builds + pushes image to Docker Hub  ->  ans
 | 5 | Domain name + ACME email | Terraform, host | `tfvars: domain`, `letsencrypt_email` |
 | 6 | Docker Hub account + image repository | CI | `daniyalbphq/solrise` (or set `CUSTOM_IMAGE`) |
 | 7 | Docker Hub access token | CI | GitHub secret `DOCKERHUB_TOKEN` |
-| 8 | Route 53 hosted zone ID (optional) | Terraform | `tfvars: route53_zone_id` |
-| 9 | AWS credentials on the Ansible control node | *optional* | only for the EC2 dynamic inventory |
-| 10 | SSH **private** key | Ansible | `~/.ssh/...` |
-| 11 | Ansible Vault password | Ansible | `--ask-vault-pass` |
-| 12 | Image already pushed to Docker Hub | Ansible | produced by CI |
+| 8 | The **custom app** repository (`solrise_erp`) + a token for it | CI | GitHub secret `SOLRISE_APP_URL` |
+| 9 | Route 53 hosted zone ID (optional) | Terraform | `tfvars: route53_zone_id` |
+| 10 | AWS credentials on the Ansible control node | *optional* | only for the EC2 dynamic inventory |
+| 11 | SSH **private** key | Ansible | `~/.ssh/...` |
+| 12 | Ansible Vault password | Ansible | `--ask-vault-pass` |
+| 13 | Image already pushed to Docker Hub | Ansible | produced by CI |
+| 14 | LLM provider + API key (OpenAI / Ollama / Azure / custom) | after the first deploy | **Solrise Settings** in the Desk (`docs/06-phase4-assistant.md`) |
+| 15 | SMS/WhatsApp provider credentials (Twilio / Meta Cloud API) - optional | after the first deploy | **Solrise Notification Channel** (`docs/07-phase4-notifications-reporting.md`) |
 
-Items **1–8** must exist before `terraform apply` (and therefore before `init`
-in practice). Items **9–12** must exist before `ansible-playbook`.
+Items **1–7** must exist before `terraform apply` (and therefore before `init`
+in practice); item **8** before the first image build; items **9–13** before
+`ansible-playbook`. Items **14–15** are business configuration applied on the
+running site - nothing about them belongs in git.
 
 ---
 
@@ -55,11 +60,29 @@ in practice). Items **9–12** must exist before `ansible-playbook`.
 - A **Docker Hub account** with access to the image repository CI pushes to
   (`<DOCKERHUB_USERNAME>/solrise` unless you override `CUSTOM_IMAGE`), plus an
   access token for the workflow — see §4.
-- The repository that holds the **custom app**, if `apps.json` references
-  `${SOLRISE_APP_URL}`. If it is private, the build needs a token for it (see
-  §4); the app list shipped here does not use it, so this is optional.
+- The repository that holds the **custom app** (`solrise_erp`), which is what
+  makes the deployment Solrise rather than a plain platform + HRMS install:
+  white-label branding and the US/USD locale, the RBAC matrix, approval
+  workflows, notifications, reports and dashboards, the LLM assistant and the
+  universal chat entry flow. `apps.json` bakes it in from `${SOLRISE_APP_URL}`,
+  so the image build needs that secret set (§4.2) - the build fails without it.
+  When the repository is private, use an access token in the URL.
 - No AWS OIDC setup is required for the image build: CI authenticates to Docker
   Hub, not to AWS.
+
+### LLM provider (for the assistant and the universal chat)
+- An account or endpoint the assistant can call - OpenAI, a self-hosted
+  **Ollama** (`http://<host>:11434/v1`, no key), Azure OpenAI, or any
+  OpenAI-compatible `/v1` gateway. The provider, base URL, model, token and rate
+  limit are **site configuration** in **Solrise Settings** on the running site,
+  not deploy secrets: they are entered after the first deploy
+  ([`infra/README.md`](README.md) §7) and never committed. Data residency note:
+  with an external provider, chat messages and record names leave your
+  infrastructure - a self-hosted Ollama keeps them in your account
+  (`docs/06-phase4-assistant.md`).
+- Optional, for SMS/WhatsApp alerts: a **Twilio** or **Meta WhatsApp Cloud API**
+  account. Those credentials live in **Solrise Notification Channel**
+  (`docs/07-phase4-notifications-reporting.md`), also on the running site.
 
 ### DNS
 - A domain you control. Either a **Route 53 hosted zone** in the same account
@@ -190,7 +213,7 @@ repository secret** (the repository must already exist on GitHub):
 |---|---|
 | `DOCKERHUB_USERNAME` | `daniyalbphq` (the account that owns the token) |
 | `DOCKERHUB_TOKEN` | the `dckr_pat_...` token from §4.1 |
-| `SOLRISE_APP_URL` | *optional*: `https://x-access-token:<PAT>@github.com/<owner>/<app>` — only if `apps.json` references `${SOLRISE_APP_URL}` and that repo is private |
+| `SOLRISE_APP_URL` | **required**: the git remote of the `solrise_erp` app that `apps.json` bakes in - `https://x-access-token:<PAT>@github.com/<owner>/<app>` when it is private, otherwise `https://github.com/<owner>/<app>`. The build fails (with this instruction) when the value is empty |
 
 Or with the `gh` CLI from a clone of the repo:
 
@@ -232,7 +255,7 @@ Set these only to change the defaults; without them the workflow pushes
 | `CUSTOM_IMAGE` | `docker.io/<DOCKERHUB_USERNAME>/solrise` | another namespace or a private registry |
 | `CUSTOM_TAG` | `version-15` | **must match** `custom_tag` in `infra/ansible/group_vars/all/main.yml` |
 | `FRAPPE_BRANCH` | `version-15` | must match `frappe_branch` on the host |
-| `SOLRISE_APP_BRANCH` | `version-15` | branch of the custom app, when used |
+| `SOLRISE_APP_BRANCH` | `main` | branch of the custom app; **must match** `solrise_app_branch` in `infra/ansible/group_vars/all/main.yml` |
 
 `gh variable set CUSTOM_TAG --body version-15 --repo daniyalbphq-commits/solrise-erp`
 works the same way.
@@ -344,6 +367,16 @@ gh run list --workflow build-image.yml --limit 3
 If the image is private, also set the Vault credentials in §5.4 so the host can
 log in before pulling.
 
+The image must also carry the **`solrise_erp` application layer** (white-label
+branding, RBAC, assistant, universal chat, reports). The deploy installs it on the
+site and then verifies it with `scripts/verify_app_layer.py` - a missing branding
+or chat surface fails the run instead of surfacing as a half-configured product.
+You can run the same check by hand on the host:
+
+```bash
+cd /opt/solrise-erp && SITE_ENV=aws make verify
+```
+
 (Or build and push from your workstation — see §6.)
 
 ### 5.6 Then
@@ -363,7 +396,9 @@ If you would rather build locally and push by hand:
 printf '%s\n' "$DOCKERHUB_TOKEN" | podman login --username daniyalbphq --password-stdin docker.io
 
 # .env: CUSTOM_IMAGE=docker.io/daniyalbphq/solrise, CUSTOM_TAG=version-15,
-#       FRAPPE_BRANCH=version-15, CONTAINER_ENGINE=podman
+#       FRAPPE_BRANCH=version-15, CONTAINER_ENGINE=podman,
+#       SOLRISE_APP_URL=<git remote of the solrise_erp app, token in the URL if private>,
+#       SOLRISE_APP_BRANCH=main
 make image
 ./scripts/push-image.sh
 ```
@@ -510,8 +545,12 @@ works for a first bring-up but is not recommended for ongoing use.
   scoped access token (`DOCKERHUB_TOKEN`), never the account password, and the
   host uses a token too. Revoke a token to cut off a deployment.
 - **No static AWS keys in GitHub.** The image build does not touch AWS at all.
-  The only optional AWS-related secret is `SOLRISE_APP_URL` (a scoped GitHub PAT)
-  when the custom app repo is private.
+  `SOLRISE_APP_URL` is a scoped GitHub PAT (or a plain URL for a public app repo)
+  used only to clone the app into the image, and it is mounted as a BuildKit
+  secret, never as a build argument, so it cannot leak into image layer metadata.
+- **The assistant's provider key is site configuration, not a deploy secret.** It
+  lives encrypted in `Solrise Settings` on the running site - keep it out of the
+  repo, in a password manager, and rotate it on a schedule.
 - **No DB password anywhere in your config.** RDS rotates it in Secrets Manager;
   the host reads it through its instance role, the control node through the
   policy in §5.2.

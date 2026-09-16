@@ -72,7 +72,10 @@
     effective_backup_dir: "{{ backup_dir | default('') if (backup_dir | default('') | length > 0) else app_dir + '/backups' }}"
     # cloud_storage ships in the image; it is only installed on the site when
     # there is a media bucket to talk to (and only then is it configured).
-    effective_install_apps: "{{ install_apps }}{{ ',cloud_storage' if (s3_media_enabled | default(false) | bool and media_bucket | default('') | length > 0) else '' }}"
+    # solrise_erp is the Solrise application layer (white labeling, RBAC, the
+    # assistant, universal chat, reports); its own verification task below uses
+    # the same flag.
+    effective_install_apps: "{{ install_apps }}{{ ',solrise_erp' if (solrise_app_enabled | default(true) | bool) else '' }}{{ ',cloud_storage' if (s3_media_enabled | default(false) | bool and media_bucket | default('') | length > 0) else '' }}"
     effective_s3_endpoint_url: "{{ s3_media_endpoint_url if (s3_media_endpoint_url | default('') | length > 0) else 'https://s3.' + aws_region + '.amazonaws.com' }}"
 
 # Whether the host has to authenticate to Docker Hub before pulling: only for a
@@ -246,6 +249,78 @@
   when: run_site_setup | bool
   register: site_setup
   changed_when: "'site setup complete' in site_setup.stdout or 'create-site: done' in site_setup.stdout"
+
+# --- application layer (white labeling, assistant, chat) ----------------------
+# With `solrise_app_enabled: true` the site setup above installs solrise_erp and
+# its `after_migrate` applies branding, RBAC, workflows, notifications, reports
+# and dashboards. This turns "the deploy delivered the product" into a checked
+# fact: it reads the values the app writes and fails the run when they are
+# missing.
+- name: Verify the Solrise application layer (white labeling, chat, RBAC artifacts)
+  ansible.builtin.command:
+    cmd: ./scripts/run-python.sh scripts/verify_app_layer.py
+    chdir: "{{ app_dir }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "{{ deploy_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
+    SITE_ENV: aws
+  when:
+    - run_site_setup | bool
+    - solrise_app_enabled | default(true) | bool
+  changed_when: false
+  register: app_layer
+
+- name: Report the application layer
+  ansible.builtin.debug:
+    msg: "{{ app_layer.stdout_lines }}"
+  when: app_layer.stdout_lines is defined
+
+# --- application layer without the app (interim) ------------------------------
+# While the app's source is unavailable (`solrise_app_enabled: false`) the same
+# features are delivered from this repository and from the app's *exported*
+# fixtures: the DocType half of the white labeling, the RBAC matrix, the module
+# settings, the Issue SLA and the routing rule, plus the workflow, notification,
+# report and dashboard records. What that leaves out is listed in
+# docs/16-deployment-pipeline-status.md section 5.4.
+- name: Apply white-label branding without the app (interim)
+  ansible.builtin.command:
+    cmd: ./scripts/run-python.sh scripts/branding_only.py
+    chdir: "{{ app_dir }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "{{ deploy_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
+    SITE_ENV: aws
+    BRANDING_RENAME_COMPANY: "1"
+  when:
+    - run_site_setup | bool
+    - not (solrise_app_enabled | default(true) | bool)
+  changed_when: false
+  register: branding_lite
+
+- name: Import the app fixtures that need no app (interim)
+  ansible.builtin.command:
+    cmd: ./scripts/import_app_fixtures.sh
+    chdir: "{{ app_dir }}"
+  become: true
+  become_user: "{{ deploy_user }}"
+  environment:
+    HOME: "{{ deploy_home }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
+    SITE_ENV: aws
+  when:
+    - run_site_setup | bool
+    - not (solrise_app_enabled | default(true) | bool)
+  changed_when: false
+  register: app_fixtures
+
+- name: Report the interim application layer
+  ansible.builtin.debug:
+    msg: "{{ (branding_lite.stdout_lines | default([])) + (app_fixtures.stdout_lines | default([])) }}"
+  when: branding_lite.stdout_lines is defined or app_fixtures.stdout_lines is defined
 
 # --- media (S3) --------------------------------------------------------------
 # Points the site's file storage at the S3 media bucket, proves the instance

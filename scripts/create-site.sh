@@ -30,6 +30,22 @@ fi
 log "running create-site (idempotent) ..."
 compose run --rm create-site
 
+# Install the apps the site is missing. The create-site service only installs
+# INSTALL_APPS when it *creates* the site, so an app added to the image later
+# (solrise_erp - the white-label branding, RBAC, assistant and chat layer - or
+# cloud_storage) would be baked in and never installed on an existing site.
+# Checked explicitly rather than relying on `bench install-app` being a no-op, so
+# a re-run can never re-execute an app's after_install hooks.
+log "checking apps (INSTALL_APPS=${INSTALL_APPS:-})"
+for app in $(printf '%s' "${INSTALL_APPS:-}" | tr ',' ' '); do
+  if compose exec -T backend bench --site "${SITE_NAME}" list-apps 2>/dev/null | tr -d '\r' | grep -qx "${app}"; then
+    log "app installed: ${app}"
+  else
+    log "installing app on the existing site: ${app}"
+    compose exec -T backend bench --site "${SITE_NAME}" install-app "${app}"
+  fi
+done
+
 # Bring the database up to date with the code in the image. CI rebuilds the image
 # whenever apps.json or the build machinery changes and the apps track their
 # branches, so a redeploy can carry schema changes and patches the site has not

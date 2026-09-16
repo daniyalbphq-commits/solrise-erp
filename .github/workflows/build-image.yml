@@ -6,15 +6,21 @@
 #   gh workflow run build-image.yml -f tag=version-15
 #
 # Ansible only *pulls* the image on the host (CUSTOM_IMAGE:CUSTOM_TAG in .env),
-# so the slow bake (frappe + erpnext + hrms + cloud_storage) never runs on
-# production. Authentication is a Docker Hub personal access token kept as a
-# repository secret - no AWS credentials, no long-lived registry password.
+# so the slow bake (frappe + erpnext + hrms + the Solrise app + cloud_storage)
+# never runs on production. Authentication is a Docker Hub personal access token
+# kept as a repository secret - no AWS credentials, no long-lived registry
+# password.
 #
 # Repository configuration (Settings -> Secrets and variables -> Actions):
 #   Secrets (preferred - stored encrypted and masked in logs):
 #     DOCKERHUB_USERNAME   Docker Hub account/org that owns the image
 #     DOCKERHUB_TOKEN      personal access token with Read & Write scope
-#     SOLRISE_APP_URL      only when apps.json references ${SOLRISE_APP_URL}
+#     SOLRISE_APP_URL      REQUIRED: apps.json bakes the Solrise application
+#                          layer (white labeling, RBAC, assistant, chat,
+#                          reports) from this git remote. Use
+#                          https://x-access-token:<PAT>@github.com/<owner>/<app>
+#                          when that repository is private. The build fails
+#                          without it rather than shipping a bare ERPNext.
 #   Variables (optional; the same names are accepted as a fallback, but they are
 #   stored in plaintext and are NOT masked in logs - use Secrets for the token):
 #     DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
@@ -22,7 +28,8 @@
 #     CUSTOM_TAG           version-15   (must match custom_tag in
 #                                       infra/ansible/group_vars/all/main.yml)
 #     FRAPPE_BRANCH        version-15
-#     SOLRISE_APP_BRANCH   version-15
+#     SOLRISE_APP_BRANCH   main         (must match solrise_app_branch in
+#                                       infra/ansible/group_vars/all/main.yml)
 #
 # The token steps are in infra/PREREQUISITES.md section 4.
 # =============================================================================
@@ -68,7 +75,8 @@ jobs:
       CUSTOM_IMAGE: ${{ vars.CUSTOM_IMAGE || format('docker.io/{0}/solrise', secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME) }}
       CUSTOM_TAG: ${{ inputs.tag != '' && inputs.tag || vars.CUSTOM_TAG || 'version-15' }}
       FRAPPE_BRANCH: ${{ vars.FRAPPE_BRANCH || 'version-15' }}
-      SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'version-15' }}
+      # Must match solrise_app_branch in infra/ansible/group_vars/all/main.yml.
+      SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'main' }}
 
     steps:
       - name: Guard the required registry credentials
@@ -113,6 +121,15 @@ jobs:
           SOLRISE_APP_URL: ${{ secrets.SOLRISE_APP_URL }}
         run: |
           set -euo pipefail
+          # apps.json bakes the Solrise application layer - white-label branding,
+          # RBAC, approval workflows, notifications, reports, the LLM assistant
+          # and the universal chat - from ${SOLRISE_APP_URL}. An unset value would
+          # otherwise fail deep inside the build (or, worse, be mistaken for a
+          # deliberate "ship without the app"), so fail here with the fix.
+          if grep -qF '${SOLRISE_APP_URL}' apps.json && [ -z "${SOLRISE_APP_URL}" ]; then
+            echo "::error title=SOLRISE_APP_URL is not set::apps.json bakes the Solrise application layer from \${SOLRISE_APP_URL} (white labeling, RBAC, assistant, chat, reports). Add the SOLRISE_APP_URL secret for the app repository - https://x-access-token:<PAT>@github.com/<owner>/<app> when it is private - or remove that entry from apps.json (and solrise_erp from install_apps) to ship without the app layer."
+            exit 1
+          fi
           # The scripts *source* this file (set -a; . ./.env), so every value with
           # a space has to be quoted: `COMPOSE_CMD=docker compose` unquoted would
           # be read as an assignment followed by the command `compose`.

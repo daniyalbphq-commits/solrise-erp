@@ -27,7 +27,26 @@ frappe_branch: version-15
 # The custom app baked in via apps.json (${SOLRISE_APP_URL}).
 solrise_app_url: "https://github.com/DaniyalM/solrise_erp"
 solrise_app_branch: main
+# Base app list for the site. solrise_erp and cloud_storage are appended by the
+# role when their feature is enabled (see below and effective_install_apps).
 install_apps: "erpnext,hrms"
+
+# --- application layer (white labeling, RBAC, assistant, chat) ---------------
+# solrise_erp is the Solrise application layer: white-label branding + US/USD
+# locale, the RBAC matrix, approval workflows, notifications, reports and
+# dashboards, the LLM assistant ("Ask Solrise") and the universal chat entry
+# flow. It is baked into the image from apps.json (${SOLRISE_APP_URL}) and
+# installed on the site here; the deploy then verifies it is really live.
+#
+# FALSE today: the app's source is not available (no repository or machine we can
+# reach provides it), so the image cannot carry it. The deploy then applies the
+# parts of the same feature set that live in this repository or in the app's
+# exported fixtures instead (branding, RBAC, the SLA, and the workflow /
+# notification / report / dashboard fixtures) - see
+# docs/16-deployment-pipeline-status.md section 5.4.
+# Flip to true, together with the apps.json entry and the SOLRISE_APP_URL secret,
+# the moment apps/solrise_erp exists somewhere.
+solrise_app_enabled: false
 
 # Rebuild the image on the EC2 host itself. ECR is the primary source: the image
 # is built in GitHub Actions and pulled here, so this defaults to false.

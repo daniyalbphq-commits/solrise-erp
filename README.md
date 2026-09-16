@@ -118,9 +118,14 @@ SITE_ENV=prod make backup
 
 ## Configuration model
 
-1. **Image** - `apps.json` + `APPS_JSON` bake `erpnext` and `hrms` into
+1. **Image** - `apps.json` (with `SOLRISE_APP_URL`/`SOLRISE_APP_BRANCH` from `.env`)
+   bakes `erpnext`, `hrms`, the Solrise application layer - branding, RBAC,
+   assistant, chat, reports - and `cloud_storage` into
    `solrise/erpnext:<tag>`. Apps are never `get-app`'d inside a running
-   container, because that is lost on recreate.
+   container, because that is lost on recreate. The deployment builds and installs
+   that list, then verifies it (`make verify`): see
+   [`docs/16-deployment-pipeline-status.md`](docs/16-deployment-pipeline-status.md)
+   section 5.
 2. **Runtime** - `compose/compose.local.yaml` (no TLS) and
    `compose/compose.prod.yaml` (Traefik + Let's Encrypt) share the same service
    topology; only exposure and developer-mode differ.

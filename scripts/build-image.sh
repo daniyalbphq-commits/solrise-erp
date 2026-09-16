@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the Solrise image: Frappe + the platform + HRMS baked in from apps.json.
+# Build the Solrise image: Frappe + the platform + HRMS + the Solrise application
+# layer (branding, RBAC, assistant, chat, reports) baked in from apps.json.
 #
 # Two stages, both driven from here:
 #   1. frappe_docker's *layered* Containerfile - the apps listed in apps.json,
@@ -78,7 +79,11 @@ with open(dest, "w") as handle:
 
 print("[solrise] apps baked into the image:")
 for app in apps:
-    print("  - %s @ %s" % (app.get("url"), app.get("branch")))
+    # A private app remote carries its token as URL userinfo
+    # (https://x-access-token:<PAT>@github.com/...). GitHub masks secret values in
+    # logs, but do not rely on that: redact it here as well.
+    url = re.sub(r"//[^/@]*@", "//***@", app.get("url") or "")
+    print("  - %s @ %s" % (url, app.get("branch")))
 PY
 
 # The apps.json secret is NOT part of the build cache key, so a changed app list

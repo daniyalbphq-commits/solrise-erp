@@ -22,7 +22,7 @@ export
 
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
-        backup restore fixtures pull-fixtures media
+        backup restore fixtures pull-fixtures media verify branding app-fixtures
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -43,6 +43,15 @@ site: ## Create the site and install apps (idempotent)
 
 media: ## Point file storage at the S3 media bucket (S3_MEDIA_* in .env)
 	./scripts/setup-media.sh
+
+verify: ## Check the deployed application layer (branding, assistant, chat, RBAC)
+	./scripts/run-python.sh scripts/verify_app_layer.py
+
+branding: ## White-label branding without the app (the DocType half of docs/10)
+	./scripts/run-python.sh scripts/branding_only.py
+
+app-fixtures: ## Import app fixtures that need no app (workflows, notifications, reports, dashboards)
+	./scripts/import_app_fixtures.sh
 
 init: image local-up site ## Full local bring-up in one shot
 
