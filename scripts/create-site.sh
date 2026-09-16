@@ -28,7 +28,10 @@ else
 fi
 
 log "running create-site (idempotent) ..."
-compose run --rm create-site
+# `create-site` sits behind the `init` profile (it must not start with the stack),
+# so the profile has to be named - otherwise podman-compose reports it as a
+# missing service and the deploy stops here. restore.sh already does this.
+compose --profile init run --rm create-site
 
 # Install the apps the site is missing. The create-site service only installs
 # INSTALL_APPS when it *creates* the site, so an app added to the image later
