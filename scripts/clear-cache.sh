@@ -21,6 +21,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/lib.sh"
 
+# Register the apps the image carries before touching the caches (see
+# scripts/register-apps.sh): a newly baked app is invisible to bench until its name
+# is in sites/apps.txt, and the caches cleared below are exactly the ones that keep
+# it hidden. Tolerant, because a rollout that ran fine should not fail on this.
+"${SCRIPT_DIR}/register-apps.sh" \
+  || log "warning: could not register the apps (is the backend up?)"
+
 # The backend may still be starting right after `up -d`.
 for attempt in 1 2 3 4 5; do
   if compose exec -T backend bench --site "${SITE_NAME}" clear-cache >/dev/null 2>&1; then

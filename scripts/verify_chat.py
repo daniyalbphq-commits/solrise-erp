@@ -245,8 +245,10 @@ def check_widget_assets():
         "assets/solrise_erp/js/solrise_erp.js",
         "assets/solrise_erp/images/solrise-logo.png",
     ):
+        # `frappe.read_file` decodes text, so it reports a binary file as empty;
+        # measure the file itself instead.
         try:
-            size = len(frappe.read_file(path) or "")
+            size = os.path.getsize(frappe.get_bench_relative_path(path))
         except Exception:  # noqa: BLE001
             size = 0
         check(f"served: /{path}", size > 0, f"{size} bytes")
@@ -266,7 +268,7 @@ def check_widget_assets():
         if not isinstance(url, str) or not url.endswith((".css", ".js")):
             continue
         try:
-            if not frappe.read_file(url.lstrip("/")):
+            if not os.path.getsize(frappe.get_bench_relative_path(url.lstrip("/"))):
                 missing.append(url)
         except Exception:  # noqa: BLE001
             missing.append(url)
