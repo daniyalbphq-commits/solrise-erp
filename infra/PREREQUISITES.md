@@ -206,6 +206,22 @@ The workflow reads them as `secrets.DOCKERHUB_USERNAME` / `secrets.DOCKERHUB_TOK
 logs in with `docker/login-action`, then runs `scripts/build-image.sh` and
 `scripts/push-image.sh`.
 
+> **Secrets vs variables.** GitHub has two separate stores, and things that end up
+> in the *Variables* tab are **not** secrets: they are stored in plaintext, are not
+> masked in workflow logs, and are readable by anyone with write access to the
+> repository. The workflow also accepts `DOCKERHUB_*` from *Variables* (secrets
+> win when both exist) so a misplacement does not break the build — it emits a
+> `::warning::` instead — but for the token, use **Secrets**. The username is
+> harmless either way.
+
+Verify what the repo actually has (names only for secrets; variables print their
+values, which is exactly why the token does not belong there):
+
+```bash
+gh secret list   --repo daniyalbphq-commits/solrise-erp
+gh variable list --repo daniyalbphq-commits/solrise-erp
+```
+
 ### 4.3 Optional repository **variables** (defaults are built in)
 
 Set these only to change the defaults; without them the workflow pushes

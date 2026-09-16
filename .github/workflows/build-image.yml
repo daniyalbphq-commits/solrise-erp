@@ -11,11 +11,13 @@
 # repository secret - no AWS credentials, no long-lived registry password.
 #
 # Repository configuration (Settings -> Secrets and variables -> Actions):
-#   Secrets:
+#   Secrets (preferred - stored encrypted and masked in logs):
 #     DOCKERHUB_USERNAME   Docker Hub account/org that owns the image
 #     DOCKERHUB_TOKEN      personal access token with Read & Write scope
 #     SOLRISE_APP_URL      only when apps.json references ${SOLRISE_APP_URL}
-#   Variables (all optional; these are the defaults):
+#   Variables (optional; the same names are accepted as a fallback, but they are
+#   stored in plaintext and are NOT masked in logs - use Secrets for the token):
+#     DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
 #     CUSTOM_IMAGE         docker.io/<DOCKERHUB_USERNAME>/solrise
 #     CUSTOM_TAG           version-15   (must match custom_tag in
 #                                       infra/ansible/group_vars/all/main.yml)
@@ -63,25 +65,28 @@ jobs:
       # The image name follows the account that owns the token, so nothing has
       # to be configured for the common case. Set the CUSTOM_IMAGE variable to
       # push somewhere else (another namespace, or a private registry).
-      CUSTOM_IMAGE: ${{ vars.CUSTOM_IMAGE || format('docker.io/{0}/solrise', secrets.DOCKERHUB_USERNAME) }}
+      CUSTOM_IMAGE: ${{ vars.CUSTOM_IMAGE || format('docker.io/{0}/solrise', secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME) }}
       CUSTOM_TAG: ${{ inputs.tag != '' && inputs.tag || vars.CUSTOM_TAG || 'version-15' }}
       FRAPPE_BRANCH: ${{ vars.FRAPPE_BRANCH || 'version-15' }}
       SOLRISE_APP_BRANCH: ${{ vars.SOLRISE_APP_BRANCH || 'version-15' }}
 
     steps:
-      - name: Guard the required repository secrets
+      - name: Guard the required registry credentials
         run: |
           set -euo pipefail
           missing=""
-          [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] || missing="$missing DOCKERHUB_USERNAME"
-          [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]    || missing="$missing DOCKERHUB_TOKEN"
+          [ -n "${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}" ] || missing="$missing DOCKERHUB_USERNAME"
+          [ -n "${{ secrets.DOCKERHUB_TOKEN || vars.DOCKERHUB_TOKEN }}" ]       || missing="$missing DOCKERHUB_TOKEN"
           if [ -n "$missing" ]; then
-            echo "::error::Missing repository secrets:$missing (see infra/PREREQUISITES.md section 4)"
+            echo "::error::Missing repository credentials:$missing - add them as Actions *secrets* (Settings -> Secrets and variables -> Actions -> Secrets), see infra/PREREQUISITES.md section 4.2"
             exit 1
           fi
           if [ -z "${CUSTOM_IMAGE}" ]; then
             echo "::error::CUSTOM_IMAGE resolved to an empty value - set the CUSTOM_IMAGE variable or the DOCKERHUB_USERNAME secret"
             exit 1
+          fi
+          if [ -n "${{ vars.DOCKERHUB_TOKEN }}" ] && [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
+            echo "::warning title=Use a secret for the token::DOCKERHUB_TOKEN is a repository VARIABLE: repository variables are stored in plaintext and are not masked in logs. This run will work, but move it to Secrets (Settings -> Secrets and variables -> Actions -> Secrets) and delete the variable."
           fi
           echo "Building ${CUSTOM_IMAGE}:${CUSTOM_TAG} (frappe ${FRAPPE_BRANCH})"
 
@@ -100,8 +105,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: docker.io
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN || vars.DOCKERHUB_TOKEN }}
 
       - name: Write .env for the build
         env:
