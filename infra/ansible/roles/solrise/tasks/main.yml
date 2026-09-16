@@ -112,7 +112,11 @@
     - effective_image == ecr_repository_url
   changed_when: false
 
-- name: Log in to Docker Hub (skipped for anonymous/short-lived tokens)
+- name: Log in to Docker Hub (needs dockerhub_username/dockerhub_password in the vault for a private image)
+  # `no_log` hides the module output on purpose (the password is interpolated
+  # into the command), so if this task fails the message will not say why: it is
+  # almost always a missing/expired/wrong token in group_vars/all/vault.yml.
+  # A public image needs no login, and then these two vars can stay unset.
   ansible.builtin.shell: >-
     printf '%s\n' '{{ dockerhub_password }}' |
     podman login --username '{{ dockerhub_username }}' --password-stdin docker.io

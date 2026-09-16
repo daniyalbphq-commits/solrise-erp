@@ -314,14 +314,23 @@ ansible-vault encrypt group_vars/all/vault.yml
 Keep the vault password itself in your password manager / CI secret store.
 
 The same file holds the **Docker Hub** credentials the host uses to `podman
-login` before pulling. They are optional for a *public* image, and worth setting
-anyway: authenticated pulls are not subject to Docker Hub's anonymous rate
-limits. Reuse the token from §4.1.
+login` before pulling. Reuse the token from §4.1 (a Read-only token is enough
+for the host):
 
 ```yaml
 dockerhub_username: "daniyalbphq"
 dockerhub_password: "dckr_pat_..."    # personal access token, not the password
 ```
+
+**Required when the image repository is private** — an anonymous `podman pull`
+of a private repository fails with `unauthorized: authentication required`. It is
+also worth setting for a *public* image, because authenticated pulls are not
+subject to Docker Hub's anonymous rate limits; leave both unset to pull
+anonymously.
+
+The login task runs with `no_log: true` (the password is interpolated into the
+command), so a failure there is reported without detail: if it fails, check the
+token and the username above.
 
 ### 5.5 The image must already be in Docker Hub
 Ansible **pulls**; it does not build by default. Trigger the build first:
