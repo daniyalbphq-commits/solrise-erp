@@ -90,7 +90,13 @@ def report_settings(settings):
 
 
 def write_settings(settings):
-    frappe.installer.update_site_config("cloud_storage_settings", settings)
+    # Import inside the function: `frappe.installer` is a submodule, so it is not
+    # reachable as an attribute of the `frappe` package without importing it, and
+    # a bench/virtualenv path issue here should surface as a clear error rather
+    # than at module import time.
+    from frappe.installer import update_site_config
+
+    update_site_config("cloud_storage_settings", settings)
     # frappe.conf is a proxy for frappe.local.conf, loaded once per process, so
     # refresh it in place: the rest of this run then sees exactly what the next
     # request will read from disk.
