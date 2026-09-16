@@ -228,6 +228,52 @@ def check_app_entry_points():
         fail("api.v1.search_faq", f"{type(exc).__name__}: {exc}")
 
 
+def check_widget_assets():
+    """A widget is only live if the browser can fetch it and Frappe includes it."""
+    print("widget assets:")
+    widget = "/assets/solrise_erp/js/solrise_chat.js"
+    for hook in ("app_include_js", "web_include_js"):
+        try:
+            paths = list(frappe.get_hooks(hook) or [])
+        except Exception as exc:  # noqa: BLE001
+            fail(f"{hook} readable", f"{type(exc).__name__}: {exc}")
+            continue
+        check(f"{hook} includes the widget", widget in paths, f"{paths}")
+
+    for path in (
+        "assets/solrise_erp/js/solrise_chat.js",
+        "assets/solrise_erp/js/solrise_erp.js",
+        "assets/solrise_erp/images/solrise-logo.png",
+    ):
+        try:
+            size = len(frappe.read_file(path) or "")
+        except Exception:  # noqa: BLE001
+            size = 0
+        check(f"served: /{path}", size > 0, f"{size} bytes")
+
+    # The manifest a page renders with must be the one the image shipped: a stale
+    # `assets_json` in Redis makes every hashed bundle URL 404 and the site renders
+    # with no CSS at all, which is the failure this repository hit twice.
+    try:
+        from frappe.utils import get_assets_json
+
+        manifest = get_assets_json() or {}
+    except Exception as exc:  # noqa: BLE001
+        fail("read the asset manifest", f"{type(exc).__name__}: {exc}")
+        return
+    missing = []
+    for url in manifest.values():
+        if not isinstance(url, str) or not url.endswith((".css", ".js")):
+            continue
+        try:
+            if not frappe.read_file(url.lstrip("/")):
+                missing.append(url)
+        except Exception:  # noqa: BLE001
+            missing.append(url)
+    check("the cached manifest matches the image", not missing,
+          f"{len(manifest)} bundle(s), missing: {missing[:3]}")
+
+
 def main():
     frappe.init(site=SITE, sites_path=SITES_PATH)
     frappe.connect()
@@ -238,6 +284,8 @@ def main():
         check_conversation()
         print()
         check_gates()
+        print()
+        check_widget_assets()
         print()
         check_settings_surface()
         print()
