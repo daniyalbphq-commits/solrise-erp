@@ -16,9 +16,46 @@
       group_vars/all/terraform.yml is missing or incomplete.
       Run `terraform apply` in infra/terraform first.
 
-- name: Read the RDS master credentials from Secrets Manager
+- name: Read the RDS master credentials on the host (its instance role has them)
+  # Runs on the target, not the control node: the EC2 instance profile already
+  # carries secretsmanager:GetSecretValue for this one secret (terraform/iam.tf),
+  # so the workstation needs no AWS Secrets Manager access - and which credentials
+  # happen to be exported in your shell stops mattering.
+  #
+  # `failed_when: false` + the assert below is deliberate: this task is `no_log`
+  # (the stdout is the password), and a plain failure here would be reported as
+  # "output has been hidden due to no_log", which is undebuggable. The assert
+  # re-raises only the exit code and stderr, neither of which contains a secret.
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import sys
+        import boto3
+        client = boto3.client("secretsmanager", region_name=sys.argv[1])
+        print(client.get_secret_value(SecretId=sys.argv[2])["SecretString"])
+      - "{{ aws_region }}"
+      - "{{ db_secret_arn }}"
+  register: rds_secret_raw
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Fail with a readable message when the RDS secret could not be read
+  ansible.builtin.assert:
+    that:
+      - rds_secret_raw.rc | default(1) == 0
+      - rds_secret_raw.stdout | default('') | length > 0
+    fail_msg: >-
+      The host could not read {{ db_secret_arn }} (exit {{ rds_secret_raw.rc | default('?') }}):
+      {{ rds_secret_raw.stderr | default('') | truncate(300) }}
+      The instance role needs secretsmanager:GetSecretValue on that secret
+      (`terraform apply` in infra/terraform attaches it) and python3-boto3 on the host.
+
+- name: Parse the RDS master credentials
   ansible.builtin.set_fact:
-    rds_secret: "{{ lookup('amazon.aws.secretsmanager_secret', db_secret_arn, region=aws_region) | from_json }}"
+    rds_secret: "{{ rds_secret_raw.stdout | from_json }}"
   no_log: true
 
 - name: Choose the image source (a configured registry image, else ECR, else build here)
@@ -37,6 +74,16 @@
     # there is a media bucket to talk to (and only then is it configured).
     effective_install_apps: "{{ install_apps }}{{ ',cloud_storage' if (s3_media_enabled | default(false) | bool and media_bucket | default('') | length > 0) else '' }}"
     effective_s3_endpoint_url: "{{ s3_media_endpoint_url if (s3_media_endpoint_url | default('') | length > 0) else 'https://s3.' + aws_region + '.amazonaws.com' }}"
+
+# Whether the host has to authenticate to Docker Hub before pulling: only for a
+# docker.io image (not ECR), and only when the vault actually carries a token
+# pair - a public image needs no login.
+- name: Decide whether the host must log in to Docker Hub
+  ansible.builtin.set_fact:
+    dockerhub_login_needed: >-
+      {{ (effective_image is match('^docker.io/'))
+         and (dockerhub_username | default('') | length > 0)
+         and (dockerhub_password | default('') | length > 0) }}
 
 # RDS lives in a private subnet: only the app host can reach it, so probe from
 # the target, not the control node.
@@ -112,25 +159,35 @@
     - effective_image == ecr_repository_url
   changed_when: false
 
-- name: Log in to Docker Hub (needs dockerhub_username/dockerhub_password in the vault for a private image)
-  # `no_log` hides the module output on purpose (the password is interpolated
-  # into the command), so if this task fails the message will not say why: it is
-  # almost always a missing/expired/wrong token in group_vars/all/vault.yml.
-  # A public image needs no login, and then these two vars can stay unset.
-  ansible.builtin.shell: >-
-    printf '%s\n' '{{ dockerhub_password }}' |
-    podman login --username '{{ dockerhub_username }}' --password-stdin docker.io
+- name: Log in to Docker Hub (needed when the image repository is private)
+  # The password goes in over stdin, never as a command-line argument, so only
+  # `podman`'s own output needs hiding. `failed_when: false` + the assert below
+  # turn a wrong or expired token into a readable message instead of a censored
+  # "output has been hidden due to no_log".
+  ansible.builtin.command:
+    cmd: podman login --username "{{ dockerhub_username }}" --password-stdin docker.io
+    stdin: "{{ dockerhub_password }}\n"
   become: true
   become_user: "{{ deploy_user }}"
   environment:
     HOME: "{{ deploy_home }}"
     XDG_RUNTIME_DIR: "/run/user/{{ deploy_uid }}"
-  when:
-    - effective_image is match('^docker.io/')
-    - dockerhub_username is defined and dockerhub_username | length > 0
-    - dockerhub_password is defined and dockerhub_password | length > 0
-  no_log: true
+  register: dockerhub_login
   changed_when: false
+  failed_when: false
+  no_log: true
+  when: dockerhub_login_needed | bool
+
+- name: Fail with a readable message when the Docker Hub login failed
+  ansible.builtin.assert:
+    that:
+      - dockerhub_login.rc | default(1) == 0
+    fail_msg: >-
+      podman login to docker.io failed (exit {{ dockerhub_login.rc | default('?') }}):
+      {{ dockerhub_login.stderr | default('') | truncate(300) }}
+      Check dockerhub_username / dockerhub_password in group_vars/all/vault.yml
+      (the image {{ effective_image }} is private, so the host must authenticate).
+  when: dockerhub_login_needed | bool
 
 - name: Pull the pre-built image from the registry
   ansible.builtin.command:

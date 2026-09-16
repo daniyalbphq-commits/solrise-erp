@@ -47,4 +47,6 @@ infra/ansible/collections/
 infra/ansible/inventory/hosts.ini
 infra/ansible/group_vars/all/terraform.yml
 infra/ansible/group_vars/all/vault.yml
+# Keep backups/manual copies of the vault out of the repo too (e.g. vault.yml.lost)
+infra/ansible/group_vars/all/vault.yml.*
 !infra/ansible/group_vars/all/vault.example.yml

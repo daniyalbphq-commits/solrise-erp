@@ -29,6 +29,10 @@
       - make
       - pipx
       - python3
+      # Used by the deploy role to read the RDS master password from Secrets
+      # Manager through the instance profile (the control node then needs no AWS
+      # access to it). Not `awscli`: Ubuntu 24.04 does not ship that package.
+      - python3-boto3
       - unzip
       - tar
     state: present
@@ -49,12 +53,26 @@
   failed_when: false
 
 - name: Install awscli (needed for ECR login and/or the S3 backup sync)
+  # Ubuntu 24.04 does not ship this package (noble dropped it), so a hard failure
+  # here would block deploys that do not need it at all - the media/S3 path uses
+  # python3-boto3 inside the container. Warn instead, and let the operator install
+  # the AWS CLI v2 bundle when they enable the ECR login or the backup sync.
   ansible.builtin.apt:
     name: awscli
     state: present
+  register: awscli_install
+  ignore_errors: true
   when: >-
     (backup_s3_enabled | default(false) | bool)
     or ((ecr_repository_url | default('')) | length > 0)
+
+- name: Warn when awscli is not available from the distribution
+  ansible.builtin.debug:
+    msg: >-
+      awscli could not be installed from the distribution packages, but
+      backup_s3_enabled / ecr_repository_url ask for it. Install the AWS CLI v2
+      bundle on the host (scripts/backup.sh's S3 sync and the ECR login use it).
+  when: awscli_install is failed
 
 - name: Set the system timezone
   community.general.timezone:

@@ -83,9 +83,9 @@ rest of the repo:
 Full detail in [`PREREQUISITES.md`](PREREQUISITES.md). In short, before
 `terraform init` you need: an AWS account + region, AWS credentials for a
 principal that can create the resources, an SSH key pair, a domain + ACME email,
-and the GitHub repo slug for OIDC. Before Ansible you additionally need: AWS
-credentials on the control node, the SSH private key, an Ansible Vault password,
-and **the image already in ECR**.
+and a Docker Hub account + access token. Before Ansible you additionally need:
+the SSH private key, an Ansible Vault passphrase, and **the image already pushed
+to Docker Hub**. No AWS credentials are needed on the control node.
 
 ## 1. Provision (Terraform)
 
@@ -173,7 +173,7 @@ ansible-playbook site.yml --ask-vault-pass
 
 The playbook:
 
-1. installs podman, `podman-compose`, git, `awscli`, ufw, fail2ban; creates swap
+1. installs podman, `podman-compose`, git, `python3-boto3`, ufw, fail2ban; creates swap
    and the sysctl values Redis/Traefik/rootless Podman need;
 2. enables lingering + the rootless `podman.socket`;
 3. clones the repo to `/opt/solrise-erp`, renders `.env` from the Terraform facts
@@ -276,8 +276,10 @@ ECR repository is retained unless you remove it too.
   live host: `systemctl --user status solrise` should show it active after
   `loginctl enable-linger`. (The repo previously relied only on container restart
   policies, which do not bring a rootless stack up at boot.)
-- `awscli` comes from apt (v1); if your distro lacks the package, install the v2
-  bundle and adjust the ECR login / S3 cron.
+- `awscli` is not in Ubuntu 24.04's repositories; the host role now warns instead
+  of failing when `backup_s3_enabled` or the ECR path asks for it. Install the
+  AWS CLI v2 bundle on the host before enabling either (the S3 *media* path does
+  not need it - the app uses boto3 inside the container).
 - The S3 backup sync is **off** by default (`backup_s3_enabled: false`); turn it on
   once you have confirmed credentials work on the host. It covers the *database*
   dump plus any files still on the volume - uploaded files live in the media

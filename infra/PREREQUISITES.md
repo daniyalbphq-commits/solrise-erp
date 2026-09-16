@@ -24,7 +24,7 @@ terraform apply  ->  GitHub Actions builds + pushes image to Docker Hub  ->  ans
 | 6 | Docker Hub account + image repository | CI | `daniyalbphq/solrise` (or set `CUSTOM_IMAGE`) |
 | 7 | Docker Hub access token | CI | GitHub secret `DOCKERHUB_TOKEN` |
 | 8 | Route 53 hosted zone ID (optional) | Terraform | `tfvars: route53_zone_id` |
-| 9 | AWS credentials on the Ansible control node | Ansible | `AWS_PROFILE` / env |
+| 9 | AWS credentials on the Ansible control node | *optional* | only for the EC2 dynamic inventory |
 | 10 | SSH **private** key | Ansible | `~/.ssh/...` |
 | 11 | Ansible Vault password | Ansible | `--ask-vault-pass` |
 | 12 | Image already pushed to Docker Hub | Ansible | produced by CI |
@@ -257,7 +257,7 @@ default and needs no AWS credentials.
 | `ansible-core` | 2.15 |
 | `amazon.aws` collection | 7.0 (`ansible-galaxy collection install -r infra/ansible/requirements.yml`) |
 | `community.general`, `ansible.posix` | per `requirements.yml` |
-| `python3-boto3` / `botocore` | for the Secrets Manager lookup and the optional dynamic inventory |
+| `python3-boto3` / `botocore` | only for the optional EC2 dynamic inventory (`-i inventory/aws_ec2.yml`) |
 | SSH client | any |
 
 ```bash
@@ -266,25 +266,19 @@ cd infra/ansible && ansible-galaxy collection install -r requirements.yml
 ```
 
 ### 5.2 AWS credentials on the control node
-Ansible reads the RDS master password from **Secrets Manager**, so the control
-node needs read access to that one secret (the Ansible *host* does not — it uses
-its instance role):
+**None are required.** The RDS master password is read *on the host*, by the
+host's own instance role (`secretsmanager:GetSecretValue`, attached by
+`terraform apply`), so the workstation needs no AWS access and it does not matter
+which AWS credentials your shell happens to have exported.
 
-```bash
-export AWS_PROFILE=my-ansible-profile
-```
+The only optional use of AWS credentials on the control node is the EC2 dynamic
+inventory (`ansible-playbook -i inventory/aws_ec2.yml site.yml`), which needs
+read-only EC2 discovery:
 
-Minimum permissions for that principal:
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
-    {
-      "Sid": "ReadRdsSecret",
-      "Effect": "Allow",
-      "Action": ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
-      "Resource": "<db_secret_arn from terraform output>"
-    },
     {
       "Sid": "DynamicInventoryOptional",
       "Effect": "Allow",
