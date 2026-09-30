@@ -4,8 +4,9 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-09-17 (live-host checks; the application layer is deployed and
-verified - section 5.1 is the requirement, section 5.5 the evidence).
+Last updated: 2026-10-01 (vault repaired; the app republished with the customer
+portal and must be rebuilt + redeployed - section 6, item 12). The live host was
+last verified 2026-09-17 (section 5.5).
 
 ---
 
@@ -13,7 +14,7 @@ verified - section 5.1 is the requirement, section 5.5 the evidence).
 
 ```mermaid
 flowchart TD
-    A[git push origin main<br/>or solrise_erp-app] --> B{Paths filter<br/>apps.json, infra/image/**,<br/>scripts/build-image.sh, solrise_erp/**}
+    A[git push origin main] --> B{Paths filter<br/>apps.json, infra/image/**,<br/>scripts/build-image.sh}
     B -->|matched| C[GitHub Actions build-image]
     B -->|not matched| Z[no image build]
     C --> C0[resolve the app remote<br/>git ls-remote, then bake]
@@ -36,8 +37,8 @@ Two stages are automated, one is not:
 | Stage | Status | Trigger |
 |---|---|---|
 | Terraform provisioning (EC2, RDS, S3, IAM) | Working, manual | `cd infra/terraform && terraform apply` |
-| Image build + push to Docker Hub | **Automated** | push to `main` touching `apps.json`, `apps.example.json`, `infra/image/**`, `scripts/build-image.sh`, `scripts/push-image.sh`, `scripts/apps-fingerprint.py`, or the workflow; **or a push to `solrise_erp-app`** (publishing the app, `scripts/publish-app.sh`, rebuilds the image); or `gh workflow run build-image.yml` |
-| Deploy on the host (pull, rollout, site + apps + branding, media, verification) | Manual | `cd infra/ansible && ansible-playbook site.yml --ask-vault-pass` |
+| Image build + push to Docker Hub | **Automated** | push to `main` touching `apps.json`, `apps.example.json`, `infra/image/**`, `scripts/build-image.sh`, `scripts/push-image.sh`, `scripts/apps-fingerprint.py`, or the workflow; or `gh workflow run build-image.yml`. **Publishing the app does NOT trigger a build** - `solrise_erp-app` is an orphan branch holding only the Frappe app, so it has no `.github/` and no `scripts/build-image.sh` (section 7) |
+| Deploy on the host (pull, rollout, site + apps + branding, media, verification) | Manual | `cd infra/ansible && ansible-playbook site.yml` (the passphrase is read from `~/.vault_pass`; `--ask-vault-pass` overrides) |
 
 There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 
@@ -352,19 +353,23 @@ the widget could not load at all.
 
 ## 6. Open items
 
-1. **The vault passphrase does not match the vault file** - this is the blocker for
-   every `ansible-playbook` run, and therefore for the boot unit and backup cron
-   below.
-   * `infra/ansible/group_vars/all/vault.yml` (re-encrypted 05:24) decrypts with
-     neither `/home/pc/.vault_pass` (16 bytes, 05:38) nor
-     `/home/pc/.solrise_vault_pass.txt` (32 bytes).
-   * `/home/pc/.solrise_vault_pass.txt` *does* decrypt the pre-05:24 copy,
-     `vault.yml.lost`, which still holds all three values
-     (`vault_admin_password`, `dockerhub_username`, `dockerhub_password`, a real
-     `dckr_pat_...` token).
-   * Two ways out, both needing the user: put the real passphrase in
-     `/home/pc/.vault_pass`, or re-encrypt `vault.yml` from the recovered values
-     using the passphrase already in that file.
+1. ~~**The vault passphrase does not match the vault file.**~~ **Resolved 2026-10-01.**
+   This was the blocker for every `ansible-playbook` run, and therefore for the
+   boot unit and backup cron below.
+   * The three values were recovered from `vault.yml.lost`, which still decrypted
+     with `/home/pc/.solrise_vault_pass.txt` (`vault_admin_password`,
+     `dockerhub_username`, `dockerhub_password` - a real `dckr_pat_...` token).
+   * `group_vars/all/vault.yml` was re-encrypted from exactly those values with
+     that passphrase, so it decrypts again. The re-encryption reproduces the
+     original file's byte length, so nothing was lost. The unreadable copy is
+     kept beside it as `vault.yml.undecryptable.bak` (`vault.yml*` is gitignored,
+     so neither ever enters the repo).
+   * The passphrase now lives in **one** place, `/home/pc/.vault_pass`, and
+     `infra/ansible/ansible.cfg` sets `vault_password_file = ~/.vault_pass`, so
+     `ansible-playbook site.yml` needs no flag. `--ask-vault-pass` still wins when
+     you would rather type it.
+   * Verified with a throwaway local play: the admin password resolves (24 chars),
+     `dockerhub_username` is `daniyalbphq`, and the token starts with `dckr_`.
 2. **The stack does not survive a reboot, and nothing backs it up** - both are
    installed by the `solrise` role *after* the point where the last playbook run
    stopped, so neither exists yet. Verified on the host 2026-09-16:
@@ -377,13 +382,11 @@ the widget could not load at all.
      does not exist, so the nightly `02:15` backup (`backup_cron_enabled: true`)
      has never run.
 
-   Both are one successful playbook run away, which is why item 1 is the priority.
-3. **Two secrets are weaker than they should be.**
-   * `DOCKERHUB_TOKEN` is a repository *variable*: stored in plaintext and not
-     masked in run logs. Move it to Secrets (the workflow warns about this).
-   * `vault.yml` and `/home/pc/.vault_pass` disagree (item 1), which is a
-     process smell as much as a blocker: the passphrase should live in exactly one
-     place that Ansible reads.
+   Both are one successful playbook run away, and item 1 no longer blocks it.
+3. **`DOCKERHUB_TOKEN` is weaker than it should be.** It is a repository
+   *variable*: stored in plaintext and not masked in run logs. Move it to Secrets
+   (the workflow warns about this on every run). The vault half of this item is
+   closed - the passphrase lives only in `/home/pc/.vault_pass`.
 4. **No CD.** Deploy is manual by design - `build-image` has no AWS credentials and
    should not, but a separate `deploy.yml` could SSH in and run the playbook. That
    needs an SSH private key (or SSM) **and the vault passphrase** as GitHub
@@ -433,9 +436,33 @@ the widget could not load at all.
     (`make verify`, `make verify-chat`) - see §5.5 for what they reported. Keep
     them in step with section 5.1: a new requirement needs a check here, or it is
     an acceptance list again.
+12. **The customer portal and the store data are published but NOT deployed.**
+    The app branch has moved on from the deployed `4655516` to `5e0edb8`, which
+    adds the portal (`docs/17`), the store importer (`docs/18`) and the store
+    CSV. Nothing on the host has them yet, and there is no portal-capable image.
+    To close it: trigger `build-image` (a push to `main` is not enough on its
+    own - see section 7), then run the playbook, then on the host
+    ```bash
+    SITE_ENV=aws ./scripts/import_stores.sh   # with STORES_DEFAULT_PASSWORD
+    SL_EMAIL_PASSWORD='...' SITE_ENV=aws ./scripts/configure_email.sh
+    ```
+    The second line is item 13; both are one-time, idempotent commands.
+13. **The mail account is configured locally, not on the live site.**
+    `Solrise Support` (`info@solrisestores.com`, SMTP 465 implicit TLS) is saved
+    and proven locally; production still sends nothing. `docs/19` has the one
+    command. Note the mail server's TLS certificate expires **2026-10-02**.
 
 ## 7. Things that bit us (do not relearn these)
 
+* **Publishing the app does not rebuild the image.** The `solrise_erp-app` branch
+  was listed in `build-image.yml`'s `on.push.branches`, and `solrise_erp/**` in
+  its `paths`, as if pushing the app triggered a build. It cannot: the branch is
+  an orphan whose root is the Frappe app, so it has no `.github/` (nothing to
+  trigger) and no `scripts/build-image.sh` (nothing for the job's own checkout to
+  run). Published app, stale image, no run in the Actions tab - and it looks like
+  a successful publish. The trigger is `main` only now, `publish-app.sh` ends by
+  saying so, and the build is started by hand:
+  `gh workflow run build-image.yml -f tag=version-15`.
 * **A re-pushed tag does not roll out by itself.** `podman-compose up -d` compares
   service *configuration*, not the image digest, so after `podman pull` the old
   containers keep running and the new image is silently unused. This is why
