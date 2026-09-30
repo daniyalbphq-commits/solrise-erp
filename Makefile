@@ -23,7 +23,7 @@ export
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
         backup restore fixtures pull-fixtures media verify branding app-fixtures \
-        stores mail clear-cache
+        stores mail clear-cache verify-portal
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -51,6 +51,9 @@ verify: ## Check the deployed application layer (branding, assistant, chat, RBAC
 
 verify-chat: ## Have a conversation with the deployed chat (menu, intent, gates, audit)
 	./scripts/run-python.sh scripts/verify_chat.py
+
+verify-portal: ## Check the customer portal (permissions, landing page, store data, routing)
+	./scripts/run-python.sh scripts/verify_portal.py
 
 branding: ## White-label branding without the app (the DocType half of docs/10)
 	./scripts/run-python.sh scripts/branding_only.py
