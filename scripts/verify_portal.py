@@ -29,10 +29,16 @@ BENCH = os.path.dirname(SITES_PATH)
 
 # A Customer must be able to file and read back their own Issues, and nothing
 # else's - that is `if_owner`.
+#
+# `share` is in here because Frappe's assignment path shares a newly assigned
+# document with its assignee *as the user who created it*: with `share: 0` the
+# whole submission is rolled back with "No permission to share Issue". See
+# install.PORTAL_PERMISSIONS.
 EXPECTED_ISSUE_PERMS = {
-    "read": 1,
-    "write": 1,
-    "create": 1,
+	"read": 1,
+	"write": 1,
+	"create": 1,
+	"share": 1,
 }
 
 failures = []
