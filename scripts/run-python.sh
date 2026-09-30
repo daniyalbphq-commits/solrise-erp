@@ -31,6 +31,9 @@ compose exec -T \
   -e "S3_MEDIA_MIGRATE_REMOVE_LOCAL=${S3_MEDIA_MIGRATE_REMOVE_LOCAL:-}" \
   -e "S3_MEDIA_ACCESS_KEY=${S3_MEDIA_ACCESS_KEY:-}" \
   -e "S3_MEDIA_SECRET_KEY=${S3_MEDIA_SECRET_KEY:-}" \
+  -e "STORE_LOGINS_PASSWORD=${STORE_LOGINS_PASSWORD:-}" \
+  -e "STORE_LOGINS_CSV=${STORE_LOGINS_CSV:-}" \
+  -e "STORES_USER_DOMAIN=${STORES_USER_DOMAIN:-}" \
   backend bash -lc \
   'cd /home/frappe/frappe-bench/sites && ../env/bin/python -' < "${FILE}"
 log "done"
