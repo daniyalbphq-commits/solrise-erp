@@ -23,7 +23,7 @@ export
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
         backup restore fixtures pull-fixtures media verify branding app-fixtures \
-        stores mail clear-cache verify-portal
+        stores mail clear-cache verify-portal logins
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -63,6 +63,9 @@ app-fixtures: ## Import app fixtures that need no app (workflows, notifications,
 
 stores: ## Seed the store list (Customer + Address + Contact per store, idempotent)
 	./scripts/import_stores.sh
+
+logins: ## Print the store login hand-out sheet (who signs in as what)
+	./scripts/run-python.sh scripts/store_logins.py
 
 mail: ## Point the site at the mail server (needs SL_EMAIL_PASSWORD in the environment)
 	./scripts/configure_email.sh
