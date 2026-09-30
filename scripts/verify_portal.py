@@ -258,7 +258,7 @@ def check_my_reports():
         "reports" in home and "/start/my-report" in home,
     )
 
-    sample = _sample_customer_user()
+    sample = _portal_user_with_a_report() or _sample_customer_user()
     if not sample:
         warn("no portal login to read reports for", "see docs/18 section 5")
         return
@@ -337,6 +337,26 @@ def check_my_reports():
     # keeps the support team's internal notes off a station phone.
     leaked = [m for m in detail.get("messages") or [] if "@" in str(m.get("text", ""))]
     check("no addresses are shown to the customer", not leaked, f"{len(leaked)} message(s)")
+
+
+def _portal_user_with_a_report():
+    """The owner of some report, if that owner is a real portal login.
+
+    Preferred over an arbitrary Customer-role user so the positive half of the
+    checks - "can read their own report, with its updates" - is actually
+    exercised rather than skipped on a site where the first customer alphabetically
+    has not filed anything.
+    """
+    try:
+        owners = frappe.get_all("Issue", pluck="owner", distinct=True, limit_page_length=50)
+    except Exception:  # noqa: BLE001
+        return None
+    for name in sorted({owner for owner in owners if owner}):
+        if not frappe.db.get_value("User", name, "enabled"):
+            continue
+        if frappe.db.get_value("User", name, "user_type") == "Website User":
+            return name
+    return None
 
 
 def _owned_by(issue_name, user):
