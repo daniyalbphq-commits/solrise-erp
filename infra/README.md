@@ -372,7 +372,7 @@ on the EBS volume (and are what the S3 sync protects).
 | Application layer check | `SITE_ENV=aws make verify` |
 | Chat behaviour + widget delivery | `SITE_ENV=aws make verify-chat` |
 | Clear caches (after a rollout, or if the site renders unstyled) | `SITE_ENV=aws make clear-cache` |
-| Shell on the host | `ssh ubuntu@<eip>` or `aws ssm start-session --target <instance-id>` |
+| Shell on the host | `ssh ubuntu@<eip>` or `aws ssm start-session --target <instance-id>`; when port 22 is blocked but AWS credentials work, `scripts/host-run.py '<cmd>'` runs a single command over SSM (`docs/16` §4) |
 | Bench shell | `podman exec -it solrise-backend bash` |
 | Migrate | `podman exec -it solrise-backend bench --site <site> migrate` |
 | DB snapshot / PITR | RDS console, or the commands in `docs/04-operations-runbook.md` section 2.5 (automated, retained 35 days - the maximum - and free at this size) |
@@ -452,10 +452,12 @@ optimisation left.
   `create-site.sh` (which registers the image's apps, installs them and migrates)
   and is gated by `scripts/verify_app_layer.py`; take a backup first, because
   `install-app` + `migrate` writes roles, permissions and workflows on a live site.
-- The **rootless user systemd unit** is the one piece that needs verification on a
-  live host: `systemctl --user status solrise` should show it active after
-  `loginctl enable-linger`. (The repo previously relied only on container restart
-  policies, which do not bring a rootless stack up at boot.)
+- The **rootless user systemd unit** was verified on a live host on 2026-10-01 and
+  needed two fixes before it could start the stack at all - it did not export
+  `.env` (so the compose file's `DB_HOST` guard killed it) and it hardcoded
+  `/usr/bin/podman-compose`, the distro's 1.0.6, which ignores `profiles:` and
+  looped the `init`-only `create-site` service. `systemctl --user status solrise`
+  now reports it active. See `docs/16` §7.
 - `awscli` is not in Ubuntu 24.04's repositories; the host role now warns instead
   of failing when `backup_s3_enabled` or the ECR path asks for it. Install the
   AWS CLI v2 bundle on the host before enabling either (the S3 *media* path does

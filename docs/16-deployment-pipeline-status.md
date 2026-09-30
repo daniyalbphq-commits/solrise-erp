@@ -4,9 +4,11 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-10-01 (vault repaired; the app republished with the customer
-portal and must be rebuilt + redeployed - section 6, item 12). The live host was
-last verified 2026-09-17 (section 5.5).
+Last updated: 2026-10-01. The vault is repaired, the customer portal and the
+store master data are deployed and verified (§5.6), the mail account is live, and
+the boot unit and nightly backup are installed (§6 item 2 is closed). What is
+left is the operator's: the LLM provider key (§6 item 10) and the store logins
+(§6 item 14).
 
 ---
 
@@ -56,7 +58,8 @@ There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 | Image source | Docker Hub `docker.io/daniyalbphq/solrise:version-15` (**private repo**); ECR is unused (`ecr_repository_url` is empty) |
 | Apps in the image | `erpnext`, `hrms`, `solrise_erp` (from `${SOLRISE_APP_URL}`), `cloud_storage` - baked by CI from `apps.json`. Until 2026-09-16 the Solrise app was missing here, so the image carried no branding and no chat |
 | Apps on the site | `INSTALL_APPS` from the rendered `.env` (`install_apps` + `solrise_erp` + `cloud_storage` when those features are on); `scripts/create-site.sh` installs any that the site is missing |
-| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository, baked in by CI and installed by `scripts/create-site.sh`. See [§5.5](#55-the-app-layer-deployed-2026-09-17) for the live evidence, and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) for the app-less interim it replaced |
+| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository (now `5e0edb8`), baked in by CI and installed by `scripts/create-site.sh`. The customer portal, the store master data and the mail account shipped on 2026-10-01. See [§5.5](#55-the-app-layer-deployed-2026-09-17), [§5.6](#56-the-customer-portal-and-the-store-data-deployed-2026-10-01) and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) |
+| Boot / backup | `/home/ubuntu/.config/systemd/user/solrise.service` (`enabled`, `active`) and `/etc/cron.d/solrise-backup` (nightly `02:15`) - installed and proved on 2026-10-01, §6 item 2 |
 | Repo / remote | `git@github.com:daniyalbphq-commits/solrise-erp.git` (remote `origin`). `core.sshCommand` pins `~/.ssh/id_ed25519_bphq`, which authenticates as `daniyalbphq-commits`; the default key authenticates as `DaniyalM`, who can read the (public) repo but is refused write: `Permission ... denied to DaniyalM` |
 | Repo on the host | `/opt/solrise-erp` (cloned by the Ansible role, so it carries the dirty file modes the role's chmod task causes) |
 
@@ -78,8 +81,9 @@ Credentials, and where each one lives - no secrets in the repo:
 ## 3. Verified working
 
 Evidence from the live stack on 2026-09-16. Re-run the checks in
-[section 4](#4-how-to-verify) rather than trusting this list blindly. (The
-2026-09-17 interim application layer has its own evidence table in §5.4.)
+[section 4](#4-how-to-verify) rather than trusting this list blindly. The
+2026-09-17 application layer has its own table in §5.5, and the 2026-10-01
+customer portal one in §5.6.
 
 | Capability | Verified how |
 |---|---|
@@ -95,11 +99,11 @@ Evidence from the live stack on 2026-09-16. Re-run the checks in
 
 ## 4. How to verify
 
-Deploy, then check the five things that actually matter:
+Deploy, then check the seven things that actually matter:
 
 ```bash
-# on the workstation
-cd infra/ansible && ansible-playbook site.yml --ask-vault-pass
+# on the workstation (the passphrase comes from ~/.vault_pass, see §6 item 1)
+cd infra/ansible && ansible-playbook site.yml
 
 # on the host (ssh -i ~/.ssh/solrise_ed25519 ubuntu@54.80.60.124)
 export XDG_RUNTIME_DIR=/run/user/1000
@@ -121,7 +125,36 @@ curl -s -o /dev/null -w '%{http_code}\n' https://erp.solrise.online
 # 5. the Solrise application layer is really installed: white labeling, the
 #    assistant, the universal chat, the RBAC artifacts
 cd /opt/solrise-erp && SITE_ENV=aws make verify
+
+# 6. the chat answers, and its gates hold
+cd /opt/solrise-erp && SITE_ENV=aws make verify-chat
+
+# 7. a Customer may file an Issue and sees only their own; the store data is there
+cd /opt/solrise-erp && SITE_ENV=aws make verify-portal
 ```
+
+### When port 22 is unreachable
+
+SSH is the normal way in, but the workstation's network blocks port 22 while
+443 does not - so `ssh ubuntu@54.80.60.124` times out and `ansible-playbook`
+with it. The host is still reachable over **SSM**, because the instance role
+already carries `AmazonSSMManagedInstanceCore`:
+
+```bash
+# one command on the host
+python3 scripts/host-run.py 'uptime'
+python3 scripts/host-run.py --as-ubuntu 'podman ps'      # rootless stack
+python3 scripts/host-run.py --put ./local.file /remote/path --as-ubuntu '...'
+```
+
+`--as-ubuntu` is required for anything touching `podman` (the containers live in
+ubuntu's user session); without it the command runs as root. `--put` copies a
+file first - needed for the boot unit, whose multi-line contents do not survive
+the SSM document. `scripts/host-run.py` goes through boto3 because
+`aws ssm send-command` aborts with `badly formed help string` on this CLI build.
+
+**This is a way to run commands, not a replacement for the playbook.** Everything
+`infra/ansible` does at deploy time still has to be done in order, by hand.
 
 Then upload a file in the UI and confirm the `File` row's `file_url` is
 `/api/method/retrieve?key=solrise/...`. Full detail in
@@ -351,6 +384,43 @@ the widget could not load at all.
    for the whole site). Restart the frontend as well; a rollout recreates both, so
    this only bites when you restart one by hand.
 
+### 5.6 The customer portal and the store data, deployed (2026-10-01)
+
+Deployed from a workstation that cannot reach port 22, so the host was driven
+over **SSM** (`scripts/host-run.py`) instead of `ansible-playbook`. The steps are
+the playbook's, in its order: update the checkout, pull the image, `make aws-up`,
+`create-site.sh`, then the two one-off seeders. The app branch is `5e0edb8`; the
+image is config `a4178f12`, build run **10**.
+
+| Check | Command | Result |
+|---|---|---|
+| The image carries the portal | `podman run --entrypoint bash <image> -lc 'ls apps/solrise_erp/solrise_erp/portal/'` | `catalog.py guard.py identity.py` |
+| The app layer still verifies | `SITE_ENV=aws make verify` | branding, roles, 4 workflows, 9 reports, dashboard, notifications, chat hooks all `ok` |
+| The portal verifies | `SITE_ENV=aws make verify-portal` | 27 checks `ok`, 0 failed |
+| Customer permissions | same script | read/write/create on Issue, `if_owner=1` |
+| The landing page | same script | `role_home_page` maps `Customer` to `['start']`; both pages exist in the app |
+| Store master data | same script | 37 Customers, 36 Contacts, 32 Contact→Customer links, 17 with a `store_code` |
+| Support routing | same script | every enabled `Support Manager` is in `Solrise Support Routing` |
+| The site answers | `curl` | `/login` `200`, `/api/method/ping` `200`, `/start` and `/start/logout` `301` (to `/login`) |
+| CSS is served | `curl -I` | `erpnext.bundle.4JCFPWFM.css` → `200 text/css`; the old hashed URL from the "broken CSS" report is gone |
+| Mail | `./scripts/configure_email.sh` with `SL_TEST_TO` | authenticated SMTP over implicit TLS, test message delivered; `Email Queue` = `Sent` |
+| Boot unit | `systemctl --user is-enabled/is-active solrise` | `enabled`, `active` |
+| Nightly backup | the cron job's own command, run once | 1.8 MB written to `/opt/solrise-erp/backups/<stamp>/` |
+
+**The store logins are deliberately not created yet.** `import_stores.sh` ran
+without `STORES_DEFAULT_PASSWORD`, so the Customers, Addresses and Contacts exist
+but no `User` does. The password is a production decision (§6 item 14):
+docs/18 §5.2 calls one shared password across 26 accounts a rehearsal measure,
+and nothing can be mailed to a `.invalid` address to reset it.
+
+**What this deploy fixed, beyond shipping the app** - all three were found by
+actually running the thing, and all three are recorded in §7:
+
+1. the `solrise_erp-app` trigger in `build-image.yml` could never fire;
+2. the boot unit could not start the stack at all;
+3. with the wrong `podman-compose`, the unit then looped the `init`-only
+   `create-site` service forever.
+
 ## 6. Open items
 
 1. ~~**The vault passphrase does not match the vault file.**~~ **Resolved 2026-10-01.**
@@ -370,19 +440,19 @@ the widget could not load at all.
      you would rather type it.
    * Verified with a throwaway local play: the admin password resolves (24 chars),
      `dockerhub_username` is `daniyalbphq`, and the token starts with `dckr_`.
-2. **The stack does not survive a reboot, and nothing backs it up** - both are
-   installed by the `solrise` role *after* the point where the last playbook run
-   stopped, so neither exists yet. Verified on the host 2026-09-16:
-   * `/home/ubuntu/.config/systemd/user/solrise.service` is **absent** and
-     `systemctl --user is-enabled solrise` says `not-found`. `loginctl` shows
-     `Linger=yes`, so the only missing piece is the unit itself. Container
-     `restart: unless-stopped` policies do not bring a rootless stack up at boot:
-     after a reboot the ERP stays down until someone runs `make aws-up`.
-   * `crontab -l` for `ubuntu` reports "no crontab", and `/opt/solrise-erp/backups`
-     does not exist, so the nightly `02:15` backup (`backup_cron_enabled: true`)
-     has never run.
+2. ~~**The stack does not survive a reboot, and nothing backs it up.**~~ **Resolved
+   2026-10-01.** Both were installed by hand over SSM, matching what the role
+   renders, and both were then proved rather than assumed:
+   * `/home/ubuntu/.config/systemd/user/solrise.service` exists, is `enabled` and
+     `active`, and `systemctl --user start` exits 0 - _after_ the two bugs in §7
+     were fixed. The stack now comes back on its own after a reboot.
+   * `/etc/cron.d/solrise-backup` holds the nightly `02:15` job. It had never run,
+     so the job's own command was run once by hand: 1.8 MB landed in
+     `/opt/solrise-erp/backups/20260930-204038/`.
 
-   Both are one successful playbook run away, and item 1 no longer blocks it.
+   Note this was done by hand because the workstation cannot reach port 22. A real
+   `ansible-playbook site.yml` still has not run end to end, so treat the parts of
+   the role that only it exercises as unverified.
 3. **`DOCKERHUB_TOKEN` is weaker than it should be.** It is a repository
    *variable*: stored in plaintext and not masked in run logs. Move it to Secrets
    (the workflow warns about this on every run). The vault half of this item is
@@ -432,28 +502,65 @@ the widget could not load at all.
     creation, lookups, approvals and the audit trail are all live. A messaging
     channel is likewise absent. Both are business decisions, and both are the
     difference between *installed* and *usable*.
-11. **`verify_app_layer.py` and `verify_chat.py` have now run against a live host**
-    (`make verify`, `make verify-chat`) - see §5.5 for what they reported. Keep
-    them in step with section 5.1: a new requirement needs a check here, or it is
-    an acceptance list again.
-12. **The customer portal and the store data are published but NOT deployed.**
-    The app branch has moved on from the deployed `4655516` to `5e0edb8`, which
-    adds the portal (`docs/17`), the store importer (`docs/18`) and the store
-    CSV. Nothing on the host has them yet, and there is no portal-capable image.
-    To close it: trigger `build-image` (a push to `main` is not enough on its
-    own - see section 7), then run the playbook, then on the host
+11. **The verification scripts have all now run against a live host** (`make verify`,
+    `make verify-chat`, `make verify-portal`) - see §5.5 and §5.6 for what they
+    reported. Keep them in step with section 5.1: a new requirement needs a check
+    here, or it is an acceptance list again. `verify_portal.py` exists because
+    neither of the other two covers the portal: they would have passed while the
+    Customer role had no permission to file anything.
+12. ~~**The customer portal and the store data are published but NOT deployed.**~~
+    **Resolved 2026-10-01** - see §5.6. The image was rebuilt (run 10), rolled out,
+    the store master data imported and the mail account configured. What remains
+    from this item is only the store **logins**, which is item 14.
+13. ~~**The mail account is configured locally, not on the live site.**~~
+    **Resolved 2026-10-01.** `Solrise Support` (`info@solrisestores.com`, SMTP 465
+    implicit TLS) is live on `erp.solrise.online` and sent a real test message;
+    `Email Queue` reports `Sent`. Production mail works - and it needs to, because
+    the "Solrise New Ticket" notification to the Support Manager is the whole point
+    of the portal (docs/17). See `docs/19`.
+
+    Still open under this item: the mail server's TLS certificate expires
+    **2026-10-02** (the day after this was written). Renew it on the mail host or
+    outbound mail starts failing closed.
+14. **The 26 store logins do not exist yet - this needs a decision, not a task.**
+    The store master data is live (§5.6), but no `User` was created for any
+    manager, because the only thing `import_stores.sh` asks for is a password and
+    that was not a call worth making on someone's behalf:
+    * one password would be shared by all 26 accounts, and `docs/18` §5.2 calls
+      that a rehearsal measure;
+    * the logins use `@stores.invalid` placeholders, so "Forgot password" can never
+      work - a forgotten password has to be reset in the Desk.
+
+    To create them, run this once on the host with a password you choose:
     ```bash
-    SITE_ENV=aws ./scripts/import_stores.sh   # with STORES_DEFAULT_PASSWORD
-    SL_EMAIL_PASSWORD='...' SITE_ENV=aws ./scripts/configure_email.sh
+    STORES_DEFAULT_PASSWORD='...' SITE_ENV=aws ./scripts/import_stores.sh
     ```
-    The second line is item 13; both are one-time, idempotent commands.
-13. **The mail account is configured locally, not on the live site.**
-    `Solrise Support` (`info@solrisestores.com`, SMTP 465 implicit TLS) is saved
-    and proven locally; production still sends nothing. `docs/19` has the one
-    command. Note the mail server's TLS certificate expires **2026-10-02**.
+    It is idempotent, so it can follow every future deploy. Filling the CSV's
+    `email` column first would make each login real and fix the reset path - that
+    is the production-grade version (docs/18 §5.3).
 
 ## 7. Things that bit us (do not relearn these)
 
+* **The boot unit had never been run, and could not have worked.** It was written
+  and reasoned about but never started - the `solrise` role installs it after the
+  deploy steps, and no playbook run ever got that far. Started once by hand it
+  failed twice, and both faults were invisible to every static check:
+  1. `ExecStart` ran `podman-compose ... --env-file .env` without exporting `.env`.
+     podman-compose substitutes `${VAR}` from *its own environment*, and
+     `compose.aws.yaml` guards `${DB_HOST:?}` - so the unit died with
+     `DB_HOST must point at the RDS endpoint` and the stack never came up. Only
+     the Makefile's `export` had ever supplied those variables, which is why every
+     hand-run deploy worked. The unit now does `set -a; . ./.env; set +a` first.
+  2. It hardcoded `/usr/bin/podman-compose`. That is the distro's **1.0.6**, which
+     ignores `profiles:`; the stack actually uses the pipx **1.5.0** named by
+     `COMPOSE_CMD` in `.env`. 1.0.6 therefore started `create-site`, an
+     `init`-only one-shot that inherits `restart: unless-stopped` from `*backend` -
+     so it exited and was restarted forever, logging "site already exists" in a hot
+     loop. The unit now execs `$COMPOSE_CMD`, and `create-site` is `restart: "no"`
+     in all three compose files so no implementation can loop it.
+  The lesson is not "test the unit", it is that a deploy path nobody has executed
+  is a draft. Both faults are in `docs/16` §6 item 2, which claimed the unit was
+  "one successful playbook run away" - it was one playbook run away from failing.
 * **Publishing the app does not rebuild the image.** The `solrise_erp-app` branch
   was listed in `build-image.yml`'s `on.push.branches`, and `solrise_erp/**` in
   its `paths`, as if pushing the app triggered a build. It cannot: the branch is
