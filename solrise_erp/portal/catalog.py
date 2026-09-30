@@ -100,6 +100,68 @@ URGENCIES = (
 DEFAULT_URGENCY = "normal"
 
 
+# --- "where is my report?" ---------------------------------------------------
+# The customer's vocabulary, not the ERP's. `Issue.status` is `Open`, `Replied`,
+# `On Hold`, `Resolved`, `Closed` - five words about a *workflow*, shown to
+# someone who may not read comfortably and who only ever wants to know one
+# thing: is anyone coming?
+#
+# So the states are four, they are carried by an icon and a colour first and a
+# word second, and `sentence` is what the detail page says out loud. `tone` names
+# a colour in the stylesheet (`.sl-state--<tone>`), which keeps the palette in the
+# CSS rather than in Python.
+#
+# `Statuses` maps the ERP's answers onto them. Every value of the DocType's
+# `status` field must appear here: an unmapped status falls back to `waiting`,
+# which understates progress rather than inventing it.
+STATES = (
+	{
+		"key": "waiting",
+		"label": "Waiting",
+		"sentence": "We have your report",
+		"help": "Nobody has started on it yet",
+		"icon": "\u23F3",  # U+23F3 hourglass
+		"tone": "calm",
+	},
+	{
+		"key": "replied",
+		"label": "In progress",
+		"sentence": "We replied to you",
+		"help": "Read the update below",
+		"icon": "\U0001F4AC",  # U+1F4AC speech balloon
+		"tone": "busy",
+	},
+	{
+		"key": "held",
+		"label": "On hold",
+		"sentence": "Waiting on something",
+		"help": "A part or a person - we have not forgotten",
+		"icon": "\u23F8\uFE0F",  # U+23F8 pause
+		"tone": "held",
+	},
+	{
+		"key": "done",
+		"label": "Fixed",
+		"sentence": "This one is done",
+		"help": "Report it again if it comes back",
+		"icon": "\u2705",  # U+2705 check mark button
+		"tone": "good",
+	},
+)
+
+#: `Issue.status` -> one of the keys above.
+STATUS_TO_STATE = {
+	"Open": "waiting",
+	"Replied": "replied",
+	"On Hold": "held",
+	"Resolved": "done",
+	"Closed": "done",
+}
+
+#: What an unrecognised status shows. See the note on `STATES`.
+DEFAULT_STATE = "waiting"
+
+
 # --- lookups -----------------------------------------------------------------
 def _by_key(entries, key):
 	"""The entry whose `key` matches, or `None`. `key` may be None."""
@@ -140,6 +202,22 @@ def category(key):
 	return _by_key(CATEGORIES, key)
 
 
+def category_by_label(label):
+	"""The category whose label is `label`, case-insensitively.
+
+	The portal does not store which button was pressed - the label in the Issue
+	subject is the only trace. Matching it back is what lets a report show the same
+	icon the customer tapped; no match means no icon, never a guessed one.
+	"""
+	wanted = str(label or "").strip().casefold()
+	if not wanted:
+		return None
+	for entry in CATEGORIES:
+		if str(entry["label"]).casefold() == wanted:
+			return dict(entry)
+	return None
+
+
 def default_category():
 	return dict(_by_key(CATEGORIES, DEFAULT_CATEGORY) or CATEGORIES[-1])
 
@@ -150,3 +228,20 @@ def urgency(key):
 
 def default_urgency():
 	return dict(_by_key(URGENCIES, DEFAULT_URGENCY) or URGENCIES[0])
+
+
+def state(key):
+	"""The state for `key`, or `None` when it is not one we render."""
+	return _by_key(STATES, key)
+
+
+def state_for_status(status):
+	"""The state to show for an `Issue.status` value.
+
+	An unknown status - a future upstream addition, a hand-edited row - answers
+	`waiting`: telling someone their report is *less* far along than it is costs a
+	phone call, while telling them it is finished when it is not costs a breakdown
+	at the pump.
+	"""
+	key = STATUS_TO_STATE.get(str(status or "").strip(), DEFAULT_STATE)
+	return dict(_by_key(STATES, key) or STATES[0])

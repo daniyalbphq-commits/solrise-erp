@@ -42,10 +42,35 @@
 		{% endfor %}
 	</nav>
 
-	{% if open_issues %}
-	<p class="sl-note" role="status">
-		{{ _("You have {0} report(s) with us").format(open_issues) }}
-	</p>
+	{% if reports %}
+	<section class="sl-reports" aria-label="{{ _('Your reports') }}">
+		<h2 class="sl-reports__title">{{ _("Your reports") }}</h2>
+		<ul class="sl-reports__list">
+			{% for report in reports %}
+			<li>
+				<a class="sl-report" href="/start/my-report?name={{ report.name }}">
+					<span class="sl-report__state sl-state--{{ report.state.tone }}"
+						aria-hidden="true">{{ report.state.icon }}</span>
+					<span class="sl-report__body">
+						<span class="sl-report__what">
+							{% if report.category %}<span class="sl-report__icon" aria-hidden="true">{{ report.category.icon }}</span>{% endif %}
+							{{ _(report.category.label) if report.category else report.subject }}
+						</span>
+						<span class="sl-report__meta">
+							<span class="sl-report__state-word">{{ _(report.state.label) }}</span>
+							{% if store_count > 1 and report.store_label %}<span class="sl-report__store">{{ report.store_label }}</span>{% endif %}
+							<span class="sl-report__age">{{ report.age }}</span>
+						</span>
+						{% if report.has_update %}
+						<span class="sl-report__update">{{ _("There is an update") }}</span>
+						{% endif %}
+					</span>
+					<span class="sl-report__go" aria-hidden="true">&#8250;</span>
+				</a>
+			</li>
+			{% endfor %}
+		</ul>
+	</section>
 	{% endif %}
 
 	{# A station phone is shared, so the way out is always on the page - quiet here,

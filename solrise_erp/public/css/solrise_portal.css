@@ -25,6 +25,18 @@
 	--sl-good: #157f3d;
 	--sl-warn: #b3261e;
 
+	/* The four "where is my report?" tones, and their tints. Colour is never the
+	   only signal - every state also carries an icon and a word - so these
+	   reinforce the answer rather than carry it. */
+	--sl-tone-calm: #1f6feb;
+	--sl-tone-calm-bg: #e8f0fe;
+	--sl-tone-busy: #b45309;
+	--sl-tone-busy-bg: #fdf1e3;
+	--sl-tone-held: #5b6478;
+	--sl-tone-held-bg: #eceff4;
+	--sl-tone-good: #157f3d;
+	--sl-tone-good-bg: #e6f4ec;
+
 	max-width: 40rem;
 	margin: 0 auto;
 	padding: 1.25rem 1rem 4rem;
@@ -122,13 +134,6 @@
 .sl-tile__caption {
 	font-size: 1rem;
 	color: var(--sl-muted);
-}
-
-.sl-note {
-	margin-top: 1.75rem;
-	text-align: center;
-	color: var(--sl-muted);
-	font-size: 1rem;
 }
 
 /* ----------------------------------------------------------------- the form */
@@ -505,6 +510,333 @@
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
 	border: 0;
+}
+
+/* ------------------------------------------------------------------ reports */
+/* The customer's own reports, on the home page. Each row is one tap to the
+   updates, so the whole row is the target. */
+
+.sl-reports {
+	margin-top: 2rem;
+}
+
+.sl-reports__title {
+	margin: 0 0 0.75rem;
+	font-size: 1.125rem;
+	font-weight: 700;
+	color: var(--sl-muted);
+}
+
+.sl-reports__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.625rem;
+}
+
+.sl-report {
+	display: flex;
+	align-items: center;
+	gap: 0.875rem;
+	min-height: 4.5rem;
+	padding: 0.75rem 0.875rem;
+	border: 2px solid var(--sl-line);
+	border-radius: 1rem;
+	background: var(--sl-surface);
+	color: var(--sl-ink);
+}
+
+.sl-report:hover,
+.sl-report:focus {
+	border-color: var(--sl-accent);
+}
+
+.sl-report:focus-visible {
+	outline: 3px solid var(--sl-accent);
+	outline-offset: 2px;
+}
+
+/* The state chip: icon first, on its tinted disc. */
+.sl-report__state,
+.sl-rhead__state {
+	--sl-tone: var(--sl-tone-calm);
+	--sl-tone-bg: var(--sl-tone-calm-bg);
+}
+
+.sl-state--calm {
+	--sl-tone: var(--sl-tone-calm);
+	--sl-tone-bg: var(--sl-tone-calm-bg);
+}
+
+.sl-state--busy {
+	--sl-tone: var(--sl-tone-busy);
+	--sl-tone-bg: var(--sl-tone-busy-bg);
+}
+
+.sl-state--held {
+	--sl-tone: var(--sl-tone-held);
+	--sl-tone-bg: var(--sl-tone-held-bg);
+}
+
+.sl-state--good {
+	--sl-tone: var(--sl-tone-good);
+	--sl-tone-bg: var(--sl-tone-good-bg);
+}
+
+.sl-report__state {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 3rem;
+	height: 3rem;
+	border-radius: 50%;
+	background: var(--sl-tone-bg);
+	font-size: 1.5rem;
+	line-height: 1;
+}
+
+.sl-report__body {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: grid;
+	gap: 0.15rem;
+}
+
+.sl-report__what {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 1.125rem;
+	font-weight: 600;
+}
+
+.sl-report__icon {
+	font-size: 1.25rem;
+	line-height: 1;
+}
+
+.sl-report__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--sl-muted);
+	font-size: 0.9375rem;
+}
+
+.sl-report__state-word {
+	font-weight: 700;
+	color: var(--sl-tone);
+}
+
+.sl-report__age {
+	margin-left: auto;
+}
+
+.sl-report__update {
+	color: var(--sl-accent);
+	font-size: 0.9375rem;
+	font-weight: 600;
+}
+
+.sl-report__go {
+	flex: 0 0 auto;
+	color: var(--sl-muted);
+	font-size: 1.75rem;
+	line-height: 1;
+}
+
+/* --------------------------------------------------------------- one report */
+
+.sl-portal--report {
+	max-width: 38rem;
+}
+
+.sl-rhead {
+	text-align: center;
+	padding: 0.5rem 0 1.5rem;
+}
+
+.sl-rhead__state {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.4rem 1rem 0.4rem 0.5rem;
+	border-radius: 999px;
+	background: var(--sl-tone-bg);
+	color: var(--sl-tone);
+	font-size: 1.125rem;
+	font-weight: 700;
+}
+
+.sl-rhead__icon {
+	font-size: 1.75rem;
+	line-height: 1;
+}
+
+.sl-rhead__sentence {
+	margin: 0.875rem 0 0.25rem;
+	font-size: 1.75rem;
+	font-weight: 700;
+}
+
+.sl-rhead__help {
+	margin: 0;
+	color: var(--sl-muted);
+	font-size: 1.0625rem;
+}
+
+.sl-what,
+.sl-updates {
+	margin-top: 1.5rem;
+	padding: 1rem;
+	border: 2px solid var(--sl-line);
+	border-radius: 1rem;
+	background: var(--sl-surface);
+}
+
+.sl-what__title,
+.sl-updates__title {
+	margin: 0 0 0.625rem;
+	font-size: 1rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--sl-muted);
+}
+
+.sl-what__line {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0;
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+.sl-what__icon {
+	font-size: 1.5rem;
+	line-height: 1;
+}
+
+.sl-what__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.625rem;
+	margin: 0.5rem 0 0;
+	color: var(--sl-muted);
+	font-size: 0.9375rem;
+}
+
+.sl-what__urgent {
+	padding: 0 0.5rem;
+	border-radius: 999px;
+	background: #fdecea;
+	color: var(--sl-warn);
+	font-weight: 700;
+}
+
+.sl-what__ref {
+	font-variant-numeric: tabular-nums;
+}
+
+.sl-what__note {
+	margin: 0.75rem 0 0;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--sl-line);
+	font-size: 1.0625rem;
+}
+
+.sl-what__photo {
+	margin: 0.875rem 0 0;
+}
+
+.sl-what__photo img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 0.75rem;
+}
+
+.sl-updates__none {
+	margin: 0;
+	color: var(--sl-muted);
+}
+
+.sl-updates__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.75rem;
+}
+
+.sl-update {
+	padding: 0.75rem 0.875rem;
+	border-radius: 0.75rem;
+	background: var(--sl-tone-calm-bg);
+}
+
+/* The customer's own words sit apart from ours, so a reply is never mistaken
+   for something they said. */
+.sl-update--me {
+	background: var(--sl-tone-held-bg);
+}
+
+.sl-update__who {
+	display: flex;
+	justify-content: space-between;
+	gap: 0.5rem;
+	margin: 0 0 0.25rem;
+	font-size: 0.9375rem;
+	font-weight: 700;
+	color: var(--sl-muted);
+}
+
+.sl-update__text {
+	margin: 0;
+	font-size: 1.0625rem;
+	white-space: pre-wrap;
+}
+
+.sl-resolution {
+	margin-top: 0.875rem;
+	padding-top: 0.875rem;
+	border-top: 1px solid var(--sl-line);
+}
+
+.sl-resolution__title {
+	margin: 0 0 0.25rem;
+	font-size: 1rem;
+	font-weight: 700;
+	color: var(--sl-good);
+}
+
+.sl-resolution__text {
+	margin: 0;
+}
+
+/* ------------------------------------------------------- a report that is gone */
+
+.sl-missing {
+	text-align: center;
+	padding: 2rem 0;
+}
+
+.sl-missing__icon {
+	font-size: 3rem;
+	line-height: 1;
+}
+
+.sl-missing__title {
+	margin: 0.75rem 0 0.25rem;
+	font-size: 1.375rem;
+}
+
+.sl-missing__help {
+	margin: 0 0 1.25rem;
+	color: var(--sl-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

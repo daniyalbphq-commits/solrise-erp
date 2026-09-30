@@ -23,6 +23,10 @@ import os
 import re
 import unittest
 
+# Imported at module level for the state and category checks below, which are
+# pure catalogue questions. The older test cases import it inside `setUp`.
+from solrise_erp.portal import catalog
+
 #: Longest label the big-button layout can show without wrapping past two lines
 #: on a 360px-wide phone.
 LABEL_LIMIT = 24
@@ -176,6 +180,121 @@ class CatalogShapeTest(unittest.TestCase):
 			source,
 			"the catalogue must stay importable without Frappe - that is what lets this test run in CI",
 		)
+
+
+class ReportStatesTest(unittest.TestCase):
+	"""The customer's "where is my report?" vocabulary.
+
+	The states are what a non-reading user actually gets: an icon, a colour and
+	two words. Getting the *mapping* wrong is worse than getting the wording wrong,
+	so both halves are pinned here.
+	"""
+
+	def test_statuses_cover_every_value_of_the_doctype(self):
+		"""Every `Issue.status` maps to a state - the five this ERPNext ships.
+
+		`verify_portal.py` re-checks this against the live DocType meta, because
+		the list below is a transcription and an upstream release can add to it.
+		"""
+		shipped = ["Open", "Replied", "On Hold", "Resolved", "Closed"]
+		for status in shipped:
+			self.assertIn(status, catalog.STATUS_TO_STATE, "{0} has no state".format(status))
+		self.assertIn(catalog.DEFAULT_STATE, {s["key"] for s in catalog.STATES})
+
+	def test_every_state_is_renderable(self):
+		keys = [state["key"] for state in catalog.STATES]
+		self.assertEqual(len(keys), len(set(keys)), "two states share a key")
+		for state in catalog.STATES:
+			for field in ("key", "label", "sentence", "icon", "tone"):
+				self.assertTrue(state.get(field), "{0} has no {1}".format(state.get("key"), field))
+			self.assertLessEqual(
+				len(state["label"]),
+				LABEL_LIMIT,
+				'"{0}" will not fit the row on a phone'.format(state["label"]),
+			)
+
+	def test_tone_names_a_stylesheet_class(self):
+		"""`.sl-state--<tone>` has to exist, or the chip renders uncoloured."""
+		css = _read("public", "css", "solrise_portal.css")
+		for state in catalog.STATES:
+			self.assertIn(
+				".sl-state--{0}".format(state["tone"]),
+				css,
+				"no colour for tone {0}".format(state["tone"]),
+			)
+
+	def test_every_catalogue_category_is_recoverable_from_its_label(self):
+		"""A report shows the icon the customer tapped, recovered from the subject.
+
+		`api.portal._subject()` writes the label into the Issue subject, so the
+		lookup is by label and must round-trip for every category - otherwise the
+		one that fails silently shows no icon at all.
+		"""
+		for category in catalog.CATEGORIES:
+			found = catalog.category_by_label(category["label"])
+			self.assertIsNotNone(found, "no category for {0}".format(category["label"]))
+			self.assertEqual(found["key"], category["key"])
+		self.assertIsNone(catalog.category_by_label("Not a category"))
+
+	def test_no_status_falls_through_to_finished(self):
+		"""An unknown status must understate, never overstate.
+
+		Telling a station "it is fixed" when it is not is the one wrong answer that
+		cannot be walked back, so the fallback is `waiting`.
+		"""
+		state = catalog.state_for_status("Something New Upstream")
+		self.assertNotEqual(state["key"], "done")
+		self.assertEqual(state["key"], catalog.DEFAULT_STATE)
+
+
+class ReportPageTest(unittest.TestCase):
+	"""The pages that show a customer their own reports."""
+
+	def test_the_home_page_lists_reports_and_links_to_the_detail(self):
+		home = _read("www", "start", "index.html")
+		self.assertIn("reports", home, "the home page does not render the report list")
+		match = re.search(r'href="(/start/[a-z-]+)\?name=', home)
+		self.assertIsNotNone(match, "no row links to a report detail route")
+		route = match.group(1).strip("/")
+		for name in ("index.html", "index.py"):
+			self.assertTrue(
+				os.path.isfile(os.path.join(_app_dir(), "www", route, name)),
+				"rows link to /{0} but {0}/{1} does not exist".format(route, name),
+			)
+
+	def test_the_detail_page_only_asks_for_its_own_report(self):
+		"""The lookup must go through `reports.detail`, which enforces ownership.
+
+		The page reading `frappe.get_doc` itself would hand any customer any report
+		whose name they could guess.
+		"""
+		page = _read("www", "start", "my-report", "index.py")
+		self.assertIn("reports.detail(", page)
+		self.assertNotIn("frappe.get_doc", page)
+
+	def test_the_reader_scopes_every_query_to_the_caller(self):
+		source = _read("portal", "reports.py")
+		self.assertIn('"owner": user', source, "the list is not scoped to the owner")
+		self.assertIn("!= user.lower()", source, "the detail does not re-check the owner")
+
+	def test_the_list_shows_open_reports_and_the_detail_does_not(self):
+		"""The list is scoped to open reports; a link to a finished one still works.
+
+		Both halves are deliberate, and both are the kind of thing a later tidy-up
+		would "unify" the wrong way: filtering `detail()` would make a fix invisible
+		to the person who reported it, and un-filtering `rows()` would fill the
+		screen with work that is already done.
+		"""
+		source = _read("portal", "reports.py")
+		self.assertIn("FINISHED_STATUSES = (", source)
+		self.assertIn("SHOW_FINISHED = False", source)
+		self.assertIn('["not in", list(FINISHED_STATUSES)]', source)
+
+		block = source.split("def detail(", 1)[-1]
+		self.assertNotIn("FINISHED_STATUSES", block, "detail() must not filter finished reports")
+
+		for status in ("Resolved", "Closed"):
+			self.assertIn(status, source, "{0} is not treated as finished".format(status))
 
 
 class HookWiringTest(unittest.TestCase):

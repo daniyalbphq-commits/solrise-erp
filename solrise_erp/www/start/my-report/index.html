@@ -1,0 +1,106 @@
+{% extends "templates/web.html" %}
+{#
+	One report and its updates. The reader may not read comfortably, so the page
+	answers the only question that matters first and in the largest type - the
+	coloured state band - and puts the sentences underneath for whoever wants
+	them.
+
+	No navigation chrome; the two exits are Back and Log out.
+#}
+
+{% block banner %}{% endblock %}
+{% block navbar %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<main class="sl-portal sl-portal--report">
+
+	<a class="sl-back" href="{{ portal_home }}">
+		<span class="sl-back__icon" aria-hidden="true">&#8592;</span>
+		<span class="sl-back__label">{{ _("Back") }}</span>
+	</a>
+
+	{% if not report %}
+
+	{# Not theirs, deleted, or a mistyped link. Same answer to all three. #}
+	<section class="sl-missing">
+		<div class="sl-missing__icon" aria-hidden="true">&#128269;</div>
+		<h1 class="sl-missing__title">{{ _("We could not find that report") }}</h1>
+		<p class="sl-missing__help">{{ _("Your reports are on the first screen") }}</p>
+		<a class="sl-again" href="{{ portal_home }}">{{ _("Back to my reports") }}</a>
+	</section>
+
+	{% else %}
+
+	<header class="sl-rhead">
+		<div class="sl-rhead__state sl-state--{{ report.state.tone }}">
+			<span class="sl-rhead__icon" aria-hidden="true">{{ report.state.icon }}</span>
+			<span class="sl-rhead__label">{{ _(report.state.label) }}</span>
+		</div>
+		<h1 class="sl-rhead__sentence">{{ _(report.state.sentence) }}</h1>
+		{% if report.state.help %}
+		<p class="sl-rhead__help">{{ _(report.state.help) }}</p>
+		{% endif %}
+	</header>
+
+	<section class="sl-what">
+		<h2 class="sl-what__title">{{ _("What you reported") }}</h2>
+		<p class="sl-what__line">
+			{% if report.category %}<span class="sl-what__icon" aria-hidden="true">{{ report.category.icon }}</span>{% endif %}
+			<span>{{ _(report.category.label) if report.category else report.subject }}</span>
+		</p>
+		<p class="sl-what__meta">
+			{% if report.store_label %}<span>{{ report.store_label }}</span>{% endif %}
+			<span>{{ report.age }}</span>
+			{% if report.urgent %}<span class="sl-what__urgent">{{ _("Urgent") }}</span>{% endif %}
+			<span class="sl-what__ref">{{ report.name }}</span>
+		</p>
+		{% if report.note %}
+		<p class="sl-what__note">{{ report.note }}</p>
+		{% endif %}
+		{% if report.photo %}
+		<figure class="sl-what__photo">
+			<img src="{{ report.photo }}" alt="{{ _('Your photo') }}">
+		</figure>
+		{% endif %}
+	</section>
+
+	<section class="sl-updates" aria-label="{{ _('Updates') }}">
+		<h2 class="sl-updates__title">{{ _("Updates") }}</h2>
+
+		{% if not report.messages %}
+		<p class="sl-updates__none">{{ _("Nothing new yet") }}</p>
+		{% else %}
+		<ul class="sl-updates__list">
+			{% for message in report.messages %}
+			<li class="sl-update{% if message.mine %} sl-update--me{% endif %}">
+				<p class="sl-update__who">
+					<span>{{ _("You") if message.mine else _("Solrise") }}</span>
+					<span class="sl-update__age">{{ message.age }}</span>
+				</p>
+				<p class="sl-update__text">{{ message.text }}</p>
+			</li>
+			{% endfor %}
+		</ul>
+		{% endif %}
+
+		{% if report.resolution %}
+		<div class="sl-resolution">
+			<h3 class="sl-resolution__title">{{ _("How it was fixed") }}</h3>
+			<p class="sl-resolution__text">{{ report.resolution }}</p>
+		</div>
+		{% endif %}
+	</section>
+
+	{% endif %}
+
+	{# A station phone is shared, so the way out is always on the page. #}
+	<footer class="sl-foot">
+		<a class="sl-logout" href="{{ logout_url }}">
+			<span class="sl-logout__icon" aria-hidden="true">&#128682;</span>
+			<span>{{ _("Log out") }}</span>
+		</a>
+	</footer>
+
+</main>
+{% endblock %}

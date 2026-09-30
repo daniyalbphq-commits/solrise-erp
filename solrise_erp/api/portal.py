@@ -314,27 +314,3 @@ def portal_home():
 	except Exception:
 		_log_error("Solrise portal: portal_home")
 		return {"home": None}
-
-
-def open_issue_count(user=None):
-	"""How many of this user's reports are still open, or `None` if unknown.
-
-	Used by the home page for one reassuring line ("we are on it"). Returning
-	`None` rather than 0 keeps "no reports" and "could not count" distinguishable
-	on a page that must never look broken.
-	"""
-	user = user or identity.current_user()
-	if not user:
-		return None
-	closed = ("Closed", "Resolved", "Cancelled")
-	try:
-		rows = frappe.get_list(
-			ISSUE,
-			filters={"owner": user, "status": ["not in", closed]},
-			fields=["name"],
-			limit_page_length=0,
-		)
-		return len(rows)
-	except Exception:
-		_log_error("Solrise portal: open_issue_count")
-		return None
