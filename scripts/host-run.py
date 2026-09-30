@@ -23,6 +23,7 @@ trips the argument parser), which is why this goes through boto3 directly.
 from __future__ import annotations
 
 import argparse
+import base64
 import sys
 import time
 
@@ -45,16 +46,43 @@ def main() -> int:
     parser.add_argument("--region", default=REGION)
     parser.add_argument("--timeout", type=int, default=600, help="seconds to wait")
     parser.add_argument("--tail", type=int, default=400, help="lines of output to show")
+    parser.add_argument(
+        "--put",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("LOCAL", "REMOTE"),
+        help="copy a local file to the host before running the command (repeatable)",
+    )
     args = parser.parse_args()
 
-    command = args.command
-    if args.as_ubuntu:
+    # Every command - uploads included - runs through the same wrapper, so a file
+    # meant for ubuntu is not written as root by the untouched redirect.
+    def wrap(cmd: str) -> str:
+        if not args.as_ubuntu:
+            return cmd
         # XDG_RUNTIME_DIR is what finds the rootless podman socket; a login shell
         # alone is not enough under send-command, which has no user session.
-        command = (
+        return (
             "sudo -u ubuntu -i bash -lc "
-            + _quote("export XDG_RUNTIME_DIR=/run/user/1000; " + command)
+            + _quote("export XDG_RUNTIME_DIR=/run/user/1000; " + cmd)
         )
+
+    # Uploads go first, as their own commands. They travel base64-encoded because
+    # the AWS-RunShellScript document loses the newlines inside a command, which
+    # silently flattens anything multi-line. Writing beside the target and moving
+    # into place sidesteps ownership: `>` cannot truncate a root-owned file, but
+    # the directory is ubuntu's and `mv` only needs write access to that.
+    commands = []
+    for local, remote in args.put:
+        with open(local, "rb") as handle:
+            payload = base64.b64encode(handle.read()).decode("ascii")
+        commands.append(
+            wrap(f"printf %s {_quote(payload)} | base64 -d > {_quote(remote)}.slnew "
+                 f"&& mv -f {_quote(remote)}.slnew {_quote(remote)}")
+        )
+
+    commands.append(wrap(args.command))
 
     ssm = boto3.client("ssm", region_name=args.region)
     # The document echoes the snippet, so the output shows what actually ran.
@@ -63,7 +91,7 @@ def main() -> int:
         DocumentName="AWS-RunShellScript",
         # The document runs the snippet with `sh`, which is dash here: no
         # `set -o pipefail` and no bashisms. Keep the snippet portable.
-        Parameters={"commands": [command]},
+        Parameters={"commands": commands},
         TimeoutSeconds=min(args.timeout, 2592000),
         Comment="solrise host-run",
     )

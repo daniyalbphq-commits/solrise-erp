@@ -172,6 +172,11 @@ services:
   create-site:
     <<: *backend
     profiles: ["init"]
+    # It inherits `restart: unless-stopped` from *backend, which is right for a
+    # long-running service and catastrophic for a one-shot: a compose tool that
+    # ignores `profiles:` (the distro's podman-compose 1.0.6 does) starts it,
+    # it exits, and it is started again forever. Never restart this.
+    restart: "no"
     entrypoint: ["bash", "-c"]
     environment:
       SITE_NAME: ${SITE_NAME}

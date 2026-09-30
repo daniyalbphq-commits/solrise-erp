@@ -1,6 +1,6 @@
 [Unit]
 Description=Solrise ERP (podman-compose, external RDS MariaDB)
-Documentation=https://github.com/CHANGE-ME/solrise-app
+Documentation=https://github.com/daniyalbphq-commits/solrise-erp
 After=network-online.target
 Wants=network-online.target
 
@@ -8,9 +8,20 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={{ app_dir }}
-ExecStart=/usr/bin/podman-compose -f compose/compose.aws.yaml --env-file .env up -d
-ExecStop=/usr/bin/podman-compose -f compose/compose.aws.yaml --env-file .env down
-ExecReload=/usr/bin/podman-compose -f compose/compose.aws.yaml --env-file .env up -d
+# Two things here are load-bearing:
+#
+# * `.env` must be *exported*, not just passed as --env-file - podman-compose
+#   substitutes ${VAR} from its own environment and the compose file guards
+#   ${DB_HOST:?}, so without `set -a; . ./.env` the unit dies with "DB_HOST must
+#   point at the RDS endpoint" and the stack never comes up.
+# * the compose command comes from COMPOSE_CMD, not a hardcoded path. The
+#   distro's /usr/bin/podman-compose is 1.0.6, which ignores `profiles:` and so
+#   starts the `init`-only create-site service - which inherits
+#   `restart: unless-stopped` and respawns forever, re-running "site already
+#   exists" in a hot loop. The version in .env (1.5.0, via pipx) respects it.
+ExecStart=/bin/bash -lc 'set -a; . ./.env; set +a; exec "$COMPOSE_CMD" -f compose/compose.aws.yaml --env-file .env up -d'
+ExecStop=/bin/bash -lc 'set -a; . ./.env; set +a; exec "$COMPOSE_CMD" -f compose/compose.aws.yaml --env-file .env down'
+ExecReload=/bin/bash -lc 'set -a; . ./.env; set +a; exec "$COMPOSE_CMD" -f compose/compose.aws.yaml --env-file .env up -d'
 TimeoutStartSec=0
 Restart=on-failure
 RestartSec=30

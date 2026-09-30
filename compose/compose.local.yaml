@@ -156,6 +156,10 @@ services:
   create-site:
     <<: *backend
     profiles: ["init"]
+    # A one-shot must never restart: it inherits `restart: unless-stopped` from
+    # *backend, so a compose tool that ignores `profiles:` (podman-compose 1.0.6
+    # does) starts it, it exits, and it is started again forever.
+    restart: "no"
     # bash -c is required: the image ENTRYPOINT execs its argv, so without
     # this the script string would be treated as a program name.
     entrypoint: ["bash", "-c"]
