@@ -23,7 +23,7 @@ export
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
         backup restore fixtures pull-fixtures media verify branding app-fixtures \
-        clear-cache
+        stores mail clear-cache
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -57,6 +57,12 @@ branding: ## White-label branding without the app (the DocType half of docs/10)
 
 app-fixtures: ## Import app fixtures that need no app (workflows, notifications, reports, dashboards)
 	./scripts/import_app_fixtures.sh
+
+stores: ## Seed the store list (Customer + Address + Contact per store, idempotent)
+	./scripts/import_stores.sh
+
+mail: ## Point the site at the mail server (needs SL_EMAIL_PASSWORD in the environment)
+	./scripts/configure_email.sh
 
 init: image local-up site ## Full local bring-up in one shot
 

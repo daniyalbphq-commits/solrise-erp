@@ -473,27 +473,36 @@ flowchart TD
 ## 12. Customer - Portal
 
 **You are:** `Solrise Customer` (`Customer`, Website User).
-**You own:** your own tickets and their replies.
+**You own:** your own reports.
+
+You land on a page of buttons rather than a list of records: the icon carries the
+meaning and the label confirms it, because the reader may not read comfortably.
+[`docs/17-customer-portal.md`](17-customer-portal.md) is how that screen is built
+and how the next button is added.
 
 ```mermaid
 flowchart TD
-    A[Login to the Portal] --> B[Support Issues]
-    B --> C[New Issue]
-    C --> D[Subject and description]
-    D --> E[Attach a file]
-    E --> F[Submit]
-    F --> G[Agent replies - you get an email]
-    G --> H[Reply or confirm resolution]
-    H --> I[Agent resolves and closes]
+    A[Log in] --> B[The button page]
+    B --> C[Report a problem]
+    C --> D[Choose what is wrong]
+    D --> E[Is it urgent?]
+    E --> F[Photo - optional]
+    F --> G[Say more - optional]
+    G --> H[Send]
+    H --> I[Big green tick]
+    I --> B
+    B --> J[Agent replies - you get an email]
 ```
 
 **Steps**
-1. Log in to the portal and open **Support Issues**.
-2. **New Issue**: subject, description, attachment. **Submit**.
-3. Track replies on the ticket; you can reply but not change the status.
-4. Confirm when resolved so the agent can close it.
+1. Log in to the portal; you land on the button page.
+2. **Report a problem**: tap the picture that matches, say whether it is urgent,
+   add a photo if you can, and press **Send**.
+3. Wait for an e-mail from the support team, and reply to it if they ask
+   something.
+4. Tell the agent when the problem is fixed so they can close it.
 
-**Guardrails:** you see only your own tickets (`if_owner` row filter); no
+**Guardrails:** you see only your own reports (`if_owner` row filter); no
 report/export/delete access. The portal is the same site - never share a portal
 account.
 

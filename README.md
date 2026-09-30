@@ -92,6 +92,9 @@ Full walkthrough: [`docs/03-phase3-production-vps.md`](docs/03-phase3-production
 | [`docs/14-vps-to-aws-migration.md`](docs/14-vps-to-aws-migration.md) | **VPS → AWS cutover: go live on VPS now, build AWS in parallel, flip DNS to Route 53** |
 | [`docs/15-s3-media-storage.md`](docs/15-s3-media-storage.md) | **Uploaded files on S3 (media off the EC2 volume): bucket, credentials, migration, caveats** |
 | [`docs/16-deployment-pipeline-status.md`](docs/16-deployment-pipeline-status.md) | **Deployment pipeline status: what is automated, what is verified, what is still open** |
+| [`docs/17-customer-portal.md`](docs/17-customer-portal.md) | **The customer portal: one-button screens for station staff, permissions, logout** |
+| [`docs/18-stores.md`](docs/18-stores.md) | **Store master data and the manager logins seeded from the store sheet** |
+| [`docs/19-email.md`](docs/19-email.md) | **Mail server: outgoing SMTP, the `use_ssl_for_outgoing` trap, incoming (off by default)** |
 | [`infra/README.md`](infra/README.md) | **AWS deployment: Terraform (EC2 + RDS MariaDB) + Ansible configure/deploy, image built in CI** |
 | [`infra/PREREQUISITES.md`](infra/PREREQUISITES.md) | **Accounts, keys and credentials required before `terraform init` / Ansible** |
 
