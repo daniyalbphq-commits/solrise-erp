@@ -69,8 +69,18 @@ FAQ_DOCTYPE = "Solrise FAQ"
 # to `Support Team` and `Projects User` - so without this row a station employee
 # cannot raise a ticket, and the portal button has nowhere to go.
 #
-# `if_owner` everywhere and no report/export/delete/share: a customer sees their
-# own reports and nobody else's (docs/11 section 2.1, docs/17).
+# `if_owner` everywhere, and no report/export/delete: a customer sees their own
+# reports and nobody else's (docs/11 section 2.1, docs/17).
+#
+# `share` is the one that has to be 1, counter-intuitively. Frappe's assignment
+# path (`assign_to._add` -> `frappe.share.add`) shares a newly assigned document
+# with the assignee **as the user who created it** - here, the station employee.
+# With `share: 0` that call dies with `PermissionError: No permission to share
+# Issue ...`, so the report the customer just filed is rolled back and the portal
+# reports a failure: the exact opposite of what the row was trying to protect.
+# `if_owner: 1` bounds it - a customer can share their own report and nothing
+# else, which is what the feature does anyway. Observed on the live site
+# 2026-10-01; see docs/17 section 8.
 PORTAL_ROLE = "Customer"
 PORTAL_PERMISSIONS = (
 	(
@@ -80,13 +90,13 @@ PORTAL_PERMISSIONS = (
 			"write": 1,
 			"create": 1,
 			"if_owner": 1,
+			"share": 1,
 			# Explicit zeros, so the grant cannot drift if an upstream default
 			# ever changes and so the intent is readable here.
 			"delete": 0,
 			"report": 0,
 			"export": 0,
 			"import": 0,
-			"share": 0,
 			"print": 0,
 			"email": 0,
 			"submit": 0,
@@ -189,11 +199,16 @@ def ensure_portal_permissions():
 	Written as a `Custom DocPerm` because the DocType already carries custom
 	permissions; Frappe copied the standard rows into that table when the first
 	custom row appeared, so adding one is additive and never removes the support
-team's access.
+	team's access.
 
-	Idempotent: an existing row for the role is left exactly as it is, so an
-	operator who adjusts the grant by hand does not get it reset on the next
-	migrate. Returns the DocTypes it granted.
+	An existing row is **reconciled** against `PORTAL_PERMISSIONS`, not left alone.
+	It used to skip when the row existed, which meant a correction shipped in this
+	table never reached a site that already had the row - and that is exactly how
+	the `share: 0` bug below survived a redeploy. These flags are the portal's
+	contract with Frappe, not an operator preference: `verify_portal.py` asserts
+	them, and drift here breaks the feature rather than merely changing it.
+
+	Returns the DocTypes it created or corrected.
 	"""
 	granted = []
 	for doctype, permissions in PORTAL_PERMISSIONS:
@@ -202,13 +217,36 @@ team's access.
 				continue
 			if not frappe.db.exists("DocType", doctype):
 				continue
-			if frappe.db.exists(
+
+			existing = frappe.db.get_value(
 				"Custom DocPerm",
 				{"parent": doctype, "role": PORTAL_ROLE, "permlevel": 0},
-			):
+				"name",
+			)
+			meta = frappe.get_meta("Custom DocPerm")
+
+			if existing:
+				doc = frappe.get_doc("Custom DocPerm", existing)
+				changed = []
+				for fieldname, value in permissions.items():
+					if not meta.has_field(fieldname):
+						continue
+					was = int(doc.get(fieldname) or 0)
+					if was != int(value):
+						doc.set(fieldname, value)
+						changed.append("{0}: {1} -> {2}".format(fieldname, was, value))
+				if not changed:
+					continue
+				doc.save(ignore_permissions=True)
+				granted.append(doctype)
+				frappe.logger().info(
+					"install: corrected %s permissions for %s (%s)",
+					doctype,
+					PORTAL_ROLE,
+					", ".join(changed),
+				)
 				continue
 
-			meta = frappe.get_meta("Custom DocPerm")
 			doc = frappe.new_doc("Custom DocPerm")
 			doc.parent = doctype
 			doc.parenttype = "DocType"
