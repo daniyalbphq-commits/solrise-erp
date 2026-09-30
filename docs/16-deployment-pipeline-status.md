@@ -397,8 +397,8 @@ image is config `a4178f12`, build run **10**.
 |---|---|---|
 | The image carries the portal | `podman run --entrypoint bash <image> -lc 'ls apps/solrise_erp/solrise_erp/portal/'` | `catalog.py guard.py identity.py` |
 | The app layer still verifies | `SITE_ENV=aws make verify` | branding, roles, 4 workflows, 9 reports, dashboard, notifications, chat hooks all `ok` |
-| The portal verifies | `SITE_ENV=aws make verify-portal` | 27 checks `ok`, 0 failed |
-| Customer permissions | same script | read/write/create on Issue, `if_owner=1` |
+| The portal verifies | `SITE_ENV=aws make verify-portal` | every check `ok`, 0 failed |
+| Customer permissions | same script | read/write/create/**share** on Issue, `if_owner=1` |
 | The landing page | same script | `role_home_page` maps `Customer` to `['start']`; both pages exist in the app |
 | Store master data | same script | 37 Customers, 36 Contacts, 32 Contact→Customer links, 17 with a `store_code` |
 | Support routing | same script | every enabled `Support Manager` is in `Solrise Support Routing` |
