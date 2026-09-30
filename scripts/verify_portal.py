@@ -73,7 +73,9 @@ def check_permissions():
     rows = frappe.get_all(
         "Custom DocPerm",
         filters={"parent": "Issue", "role": "Customer", "permlevel": 0},
-        fields=["read", "write", "create", "if_owner"],
+        # Must list every flag EXPECTED_ISSUE_PERMS asserts: a field that is not
+        # selected comes back None and reports as a failure that is not there.
+        fields=["read", "write", "create", "share", "if_owner"],
     )
     if not rows:
         fail("Customer may use Issue", "no Custom DocPerm for Customer on Issue")
