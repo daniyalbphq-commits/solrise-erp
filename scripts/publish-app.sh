@@ -126,4 +126,13 @@ echo "  group_vars       solrise_app_branch = ${BRANCH}"
 echo "  group_vars       solrise_app_enabled: true"
 echo
 echo "  (private repo? use https://x-access-token:<PAT>@<host>/<owner>/<repo> for SOLRISE_APP_URL)"
-echo "  then tell Zed: it flips the group_vars, triggers build-image and deploys."
+echo
+# The app branch is an orphan branch that holds only the Frappe app, so it has no
+# .github/ and cannot start a workflow. A publish therefore rebuilds nothing by
+# itself - say so here rather than leave a green-looking publish behind a stale
+# image.
+log "this did NOT rebuild the image - the app branch carries no workflow"
+echo "  trigger the build yourself, then deploy:"
+echo "    gh workflow run build-image.yml -f tag=version-15"
+echo "    gh run watch"
+echo "    cd infra/ansible && ansible-playbook site.yml"
