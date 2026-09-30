@@ -408,6 +408,8 @@ image is config `a4178f12`, build run **10**.
 | A report actually files | `POST api/method/solrise_erp.api.portal.create_issue` as a store login | `ISS-2026-00001` created, subject `Refrigeration - Solrise 39`, priority `High`, assigned to a Support Manager |
 | The store logins work | `POST /api/method/login` with the national digits | `7019892311` → Brett Van Dam, `home_page` `/start`; a wrong password is refused |
 | One store vs four | same, `/start/report-issue` | Brett gets the form directly; Tammy's picker offers her Solrise 28/30/31/42 and not 39 |
+| A stray login is sent back | `api.portal.portal_home` | customer → `{"home": "/start"}`; Guest and desk user → `{"home": null}` |
+| The 403 page can still rescue | `curl /app` as a store login | `403` whose body carries `solrise_portal.js`, `frappe-session-status="logged-in"` and `data-path="message"` - all three guards |
 | Boot unit | `systemctl --user is-enabled/is-active solrise` | `enabled`, `active` |
 | Nightly backup | the cron job's own command, run once | 1.8 MB written to `/opt/solrise-erp/backups/<stamp>/` |
 
@@ -424,6 +426,17 @@ station UI came back as `PermissionError: No permission to share Issue`. The
 cause, the evidence and the fix are docs/17 section 4.1; the corrected grant was
 applied to the live site immediately, and the durable fix is in the app revision
 recorded in `.build/app-rev` (build run 11).
+
+**And a station login was left with nowhere to go.** Frappe refuses the whole
+`/app` tree to a `Website User` - correct, and the reason the Desks stayed shut -
+but the *unauthenticated* door went in a circle: a Guest on `/app/issue` was
+bounced to `/login?redirect-to=/app/issue`, and after logging in that returned the
+customer to the same 403. The portal's scripts are already loaded on that page, so
+they now ask `api.portal.portal_home` and move a customer to `/start`; the 403
+itself is unchanged. Both server-side options were rejected as worse than the
+problem (a static redirect would lock the support team out of their own Desk;
+`website_path_resolver` would replace Frappe's path resolution site-wide) - docs/17
+section 12 has the measurements and the reasoning. Deployed as build run 12.
 
 **What this deploy fixed, beyond shipping the app** - all three were found by
 actually running the thing, and all three are recorded in §7:
