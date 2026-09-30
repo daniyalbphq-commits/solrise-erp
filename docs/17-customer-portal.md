@@ -434,3 +434,68 @@ That last rule is the point. A posted store is a value from a browser, so
 hand-crafting the request is refused, not honoured. Verified on a live site — a
 four-store manager posting someone else's store gets `ValidationError: Please choose
 which store this is about.` and no Issue is created.
+
+## 12. A station login that strays onto the Desk
+
+Store logins are created `user_type = "Website User"`, and Frappe refuses the
+whole `/app` tree to those accounts (`frappe/www/app.py`):
+
+```python
+elif frappe.db.get_value("User", frappe.session.user, "user_type", order_by=None) == "Website User":
+    frappe.throw(_("You are not permitted to access this page."), frappe.PermissionError)
+```
+
+That refusal is correct — it is the wall between a station phone and the ERP — and
+it is also a dead end for someone who cannot read it. Measured on the live site
+2026-10-01:
+
+| Request | Result |
+|---|---|
+| `GET /` as a store login | **200**, the portal |
+| `POST /api/method/login` | `home_page: "/start"` |
+| `GET /login` when already signed in | **301** → `/start` |
+| `GET /app` | **403**, *You are not permitted to access this page.* |
+| `GET /apps` | **301** → `/app` → the same 403 |
+| `GET /login?redirect-to=/app` | **301** → `/app` → the same 403 |
+
+So the ordinary path already lands on `/start`, and the last two rows are the hole.
+They matter because of the unauthenticated door: a Guest bounced from
+`/app/issue` is sent to `/login?redirect-to=/app/issue`, and after a successful
+login that returns them **to the refusal**. Nothing tells the customer what
+happened or what to do.
+
+### 12.1 Why it is fixed in JavaScript
+
+The 403 page still loads the portal's own scripts (`web_include_css` /
+`web_include_js` are website-wide — that is how the button page is styled), so the
+portal asks the server where the user belongs and goes there:
+
+```
+/app, Frappe message page, session = logged-in
+  -> GET /api/method/solrise_erp.api.portal.portal_home
+  -> {"home": "/start"} for a customer, {"home": null} for anyone else
+  -> location.replace("/start")
+```
+
+Three guards keep it from firing anywhere else, and all three are pinned by
+`test_a_stray_customer_is_sent_back_to_the_portal`: the path must be `/app` or
+below, `frappe-session-status` must be `logged-in`, and `data-path` must be
+`message` (the renderer Frappe uses for do-not-have-access, not-found and error
+pages — a working Desk route sets something else).
+
+**Why not server-side.** Both server-side options cost more than this is worth:
+
+* `website_redirects` is the documented redirect hook, but it is a *static* list
+  resolved before the session is consulted, so a rule for `/app` would throw the
+  support team out of their own Desk.
+* `website_path_resolver` *can* see the session, but registering it means
+  replacing Frappe's path resolution for **every** path on the site — the whole
+  website's routing to fix one error page.
+
+The client-side version touches no routing, and its failure mode is exactly
+today's behaviour: an unreachable endpoint or a script error leaves the 403 as
+Frappe rendered it. `portal_home` returns a route rather than redirecting, so the
+refusal stays Frappe's — the 403 is still returned, and this app cannot weaken it.
+
+> The 403 remains the security boundary and is unchanged. This only gives the
+> person a door out of the room Frappe put them in.

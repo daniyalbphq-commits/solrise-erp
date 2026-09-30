@@ -16,8 +16,17 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                f921b6a703c7ac285112c90899ef53eb5a6d26c7
+solrise_erp-app                                cfdd3f735f33256a7bb3f46aa4cf0106922f924c
 
+# 2026-10-01  A station login that strays onto a Desk URL was left staring at
+#             Frappe's 403 "You are not permitted to access this page", and the
+#             unauthenticated door led back to it: /app/issue ->
+#             /login?redirect-to=/app/issue -> login -> /app/issue -> 403. The
+#             portal scripts (already loaded on that page) now ask
+#             api.portal.portal_home and, for a customer only, move to /start.
+#             No routing change and no permission change - the 403 stays.
+#             (docs/17 section 12)
+#
 # 2026-10-01  The customer portal could not submit a report from the station UI:
 #             Frappe's assignment path shares a newly assigned Issue with its
 #             assignee *as the reporting customer*, which requires the Customer
