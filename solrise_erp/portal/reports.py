@@ -211,7 +211,12 @@ def _store_names(customers):
 
 
 def _names_with_messages(issue_names):
-	"""Which of these reports have anything to read. One query, not one each."""
+	"""Which of these reports have something **from Solrise**. One query, not one each.
+
+	Only `Sent` counts. Every report carries a `Received` copy of what the
+	customer typed - it is how the support team sees the report - so counting any
+	message would put "There is an update" on every row and mean nothing.
+	"""
 	if not issue_names:
 		return set()
 	try:
@@ -221,6 +226,7 @@ def _names_with_messages(issue_names):
 				"reference_doctype": ISSUE,
 				"reference_name": ["in", list(issue_names)],
 				"communication_type": ["in", list(MESSAGE_TYPES)],
+				"sent_or_received": "Sent",
 			},
 			fields=["reference_name"],
 			distinct=True,
@@ -307,7 +313,18 @@ def detail(user=None, name=None):
 		return None
 
 	state = _state(issue.get("status"))
-	messages = _messages(name)
+	thread = _messages(name)
+
+	# The first message on a report is the report itself: the platform copies the
+	# customer's own words onto the ticket so the support team can see them. That
+	# text is the note - it is what they actually typed, where `description` is the
+	# portal's composed HTML - and leaving it in the thread would print it twice on
+	# one screen and make "Updates" mean "everything".
+	note = ""
+	if thread and thread[0].get("mine"):
+		note = thread[0].get("text") or ""
+		thread = thread[1:]
+
 	return {
 		"name": issue.get("name"),
 		"subject": issue.get("subject"),
@@ -322,11 +339,11 @@ def detail(user=None, name=None):
 		"age": _age(issue.get("creation")),
 		"updated": issue.get("modified"),
 		"updated_age": _age(issue.get("modified")),
-		"note": _plain(issue.get("description"), limit=2000),
+		"note": note or _plain(issue.get("description"), limit=2000),
 		"resolution": _plain(issue.get("resolution_details"), limit=1000),
 		"photo": _photo(name),
-		"messages": messages,
-		"has_update": bool(messages),
+		"messages": thread,
+		"has_update": bool(thread),
 	}
 
 
