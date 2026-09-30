@@ -16,7 +16,14 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                3b15368d2abb565ada916d6634c93f49543b4e50
+solrise_erp-app                                9394ed477d0f94476c09b499b9b4439cc4a264ef
+
+# 2026-10-01  The report's own echo is no longer treated as an update. Every
+#             report carries a Received copy of what the customer typed, so
+#             counting messages put "There is an update" on every row; that row
+#             flag now counts only Sent, and the echo becomes the note instead
+#             of appearing twice on the detail page. docs/17 section 13.3.
+#
 
 # 2026-10-01  "Is anyone coming?": the home page now lists the customer's own
 #             open reports, and each one opens its updates. Updates come from
