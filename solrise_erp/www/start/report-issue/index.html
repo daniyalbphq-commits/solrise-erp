@@ -1,0 +1,127 @@
+{% extends "templates/web.html" %}
+{#
+	The report form. One screen, no scrolling required on a phone, no navigation
+	chrome - the only two exits are "Back" and "Send".
+
+	Icons carry the meaning and the labels confirm it, because the reader may not
+	read comfortably. The two hidden inputs are what the page actually submits;
+	the buttons are the interface to them.
+#}
+
+{% block banner %}{% endblock %}
+{% block navbar %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<main class="sl-portal sl-portal--form" data-api="{{ api_create }}">
+
+	<a class="sl-back" href="{{ portal_home }}">
+		<span class="sl-back__icon" aria-hidden="true">&#8592;</span>
+		<span class="sl-back__label">{{ _("Back") }}</span>
+	</a>
+
+	<form class="sl-form" id="sl-report" novalidate>
+
+		{% if store_count > 1 %}
+		{# Asked only of a manager who covers several sites; everyone else never sees
+		   it, and the server falls back to their single store when it is absent. #}
+		<h1 class="sl-form__title">{{ _("Which store?") }}</h1>
+		<div class="sl-choices" role="radiogroup" aria-label="{{ _('Which store?') }}">
+			{% for store in stores %}
+			<button type="button"
+				class="sl-choice{% if loop.first %} is-selected{% endif %}"
+				data-group="store"
+				data-value="{{ store.customer }}"
+				role="radio"
+				aria-checked="{{ 'true' if loop.first else 'false' }}">
+				<span class="sl-choice__icon" aria-hidden="true">&#127978;</span>
+				<span class="sl-choice__label">{{ store.customer_name }}</span>
+			</button>
+			{% endfor %}
+		</div>
+		<input type="hidden" id="sl-store" name="store" value="{{ stores[0].customer }}">
+
+		<h2 class="sl-form__title sl-form__title--small">{{ _("What is wrong?") }}</h2>
+		{% else %}
+		<h1 class="sl-form__title">{{ _("What is wrong?") }}</h1>
+		{% endif %}
+
+		<div class="sl-choices sl-choices--many" role="radiogroup" aria-label="{{ _('What is wrong?') }}">
+			{% for category in categories %}
+			<button type="button"
+				class="sl-choice{% if category.key == default_category %} is-selected{% endif %}"
+				data-group="category"
+				data-value="{{ category.key }}"
+				role="radio"
+				aria-checked="{{ 'true' if category.key == default_category else 'false' }}">
+				<span class="sl-choice__icon" aria-hidden="true">{{ category.icon }}</span>
+				<span class="sl-choice__label">{{ _(category.label) }}</span>
+			</button>
+			{% endfor %}
+		</div>
+		<input type="hidden" id="sl-category" name="category" value="{{ default_category }}">
+
+		<h2 class="sl-form__title sl-form__title--small">{{ _("Is it urgent?") }}</h2>
+
+		<div class="sl-choices sl-choices--two" role="radiogroup" aria-label="{{ _('Is it urgent?') }}">
+			{% for urgency in urgencies %}
+			<button type="button"
+				class="sl-choice{% if urgency.key == default_urgency %} is-selected{% endif %}"
+				data-group="urgency"
+				data-value="{{ urgency.key }}"
+				role="radio"
+				aria-checked="{{ 'true' if urgency.key == default_urgency else 'false' }}">
+				<span class="sl-choice__icon" aria-hidden="true">{{ urgency.icon }}</span>
+				<span class="sl-choice__label">{{ _(urgency.label) }}</span>
+				<span class="sl-choice__help">{{ _(urgency.help) }}</span>
+			</button>
+			{% endfor %}
+		</div>
+		<input type="hidden" id="sl-urgency" name="urgency" value="{{ default_urgency }}">
+
+		<div class="sl-photo">
+			<label class="sl-photo__button" for="sl-photo">
+				<span class="sl-photo__icon" aria-hidden="true">&#128247;</span>
+				<span class="sl-photo__label">{{ _("Add a photo") }}</span>
+			</label>
+			<input class="sl-hidden" type="file" id="sl-photo"
+				accept="image/*" capture="environment">
+			<figure class="sl-photo__preview" id="sl-photo-preview" hidden>
+				<img id="sl-photo-image" alt="">
+				<button type="button" class="sl-photo__clear" id="sl-photo-clear"
+					aria-label="{{ _('Remove photo') }}">&#10005;</button>
+			</figure>
+		</div>
+
+		<label class="sl-label" for="sl-description">{{ _("Say more (optional)") }}</label>
+		<textarea class="sl-textarea" id="sl-description" name="description"
+			rows="3" maxlength="2000"
+			placeholder="{{ _('Example: pump 3 is not working') }}"></textarea>
+
+		<button type="submit" class="sl-submit" id="sl-submit"
+			data-sending="{{ _('Sending') }}">
+			<span class="sl-submit__icon" aria-hidden="true">&#9989;</span>
+			<span class="sl-submit__label">{{ _("Send") }}</span>
+		</button>
+
+		<p class="sl-alert" id="sl-alert" role="alert" hidden></p>
+	</form>
+
+	<section class="sl-done" id="sl-done" hidden>
+		<div class="sl-done__tick" aria-hidden="true">&#10004;</div>
+		<h2 class="sl-done__title">{{ _("We got your report") }}</h2>
+		<p class="sl-done__ref" id="sl-done-ref"></p>
+
+		{# A station phone is shared, so the end of the flow is the *next person being
+		   able to log in*, not "done". Hence logging out is the primary action here
+		   and going back is the secondary one. #}
+		<a class="sl-logout" href="{{ logout_url }}">
+			<span class="sl-logout__icon" aria-hidden="true">&#128682;</span>
+			<span>{{ _("Log out") }}</span>
+		</a>
+
+		<a class="sl-again" href="{{ portal_home }}">{{ _("Report another problem") }}</a>
+	</section>
+
+</main>
+{% endblock %}

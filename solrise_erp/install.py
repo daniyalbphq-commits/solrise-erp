@@ -64,6 +64,39 @@ FAQ_SEED = {
 SETTINGS_SINGLE = "Solrise Settings"
 FAQ_DOCTYPE = "Solrise FAQ"
 
+# The customer portal's role and the one DocType it must reach. ERPNext ships
+# **no** `Customer` permission on `Issue` at all - the DocPerm rows there belong
+# to `Support Team` and `Projects User` - so without this row a station employee
+# cannot raise a ticket, and the portal button has nowhere to go.
+#
+# `if_owner` everywhere and no report/export/delete/share: a customer sees their
+# own reports and nobody else's (docs/11 section 2.1, docs/17).
+PORTAL_ROLE = "Customer"
+PORTAL_PERMISSIONS = (
+	(
+		"Issue",
+		{
+			"read": 1,
+			"write": 1,
+			"create": 1,
+			"if_owner": 1,
+			# Explicit zeros, so the grant cannot drift if an upstream default
+			# ever changes and so the intent is readable here.
+			"delete": 0,
+			"report": 0,
+			"export": 0,
+			"import": 0,
+			"share": 0,
+			"print": 0,
+			"email": 0,
+			"submit": 0,
+			"cancel": 0,
+			"amend": 0,
+			"select": 0,
+		},
+	),
+)
+
 
 def _log_error(title):
 	"""Write to Error Log without letting the reporting itself raise."""
@@ -146,13 +179,77 @@ def ensure_faq_seed():
 		return None
 
 
+def ensure_portal_permissions():
+	"""Grant the standard `Customer` role owner-only access to `Issue`.
+
+	This is the permission half of the customer portal (docs/17): ERPNext gives the
+	role nothing on `Issue`, so this row is what lets a station employee file a
+	report, and `if_owner` is what stops them seeing another station's.
+
+	Written as a `Custom DocPerm` because the DocType already carries custom
+	permissions; Frappe copied the standard rows into that table when the first
+	custom row appeared, so adding one is additive and never removes the support
+team's access.
+
+	Idempotent: an existing row for the role is left exactly as it is, so an
+	operator who adjusts the grant by hand does not get it reset on the next
+	migrate. Returns the DocTypes it granted.
+	"""
+	granted = []
+	for doctype, permissions in PORTAL_PERMISSIONS:
+		try:
+			if not frappe.db.exists("Role", PORTAL_ROLE):
+				continue
+			if not frappe.db.exists("DocType", doctype):
+				continue
+			if frappe.db.exists(
+				"Custom DocPerm",
+				{"parent": doctype, "role": PORTAL_ROLE, "permlevel": 0},
+			):
+				continue
+
+			meta = frappe.get_meta("Custom DocPerm")
+			doc = frappe.new_doc("Custom DocPerm")
+			doc.parent = doctype
+			doc.parenttype = "DocType"
+			doc.parentfield = "permissions"
+			doc.role = PORTAL_ROLE
+			doc.permlevel = 0
+			for fieldname, value in permissions.items():
+				if meta.has_field(fieldname):
+					doc.set(fieldname, value)
+			doc.insert(ignore_permissions=True)
+			granted.append(doctype)
+			frappe.logger().info(
+				"install: granted owner-only %s to %s", doctype, PORTAL_ROLE
+			)
+		except Exception:
+			_log_error("Solrise install: portal permission for {0}".format(doctype))
+
+	if granted:
+		try:
+			# DocPerm rows are cached per role, and the home-page cache still holds
+			# the old landing page for anyone who is already logged in.
+			frappe.clear_cache()
+		except Exception:
+			_log_error("Solrise install: clear_cache after portal permissions")
+	return granted
+
+
 def apply_all():
 	"""Re-apply everything the app owns; return a summary dict.
 
 	Safe to call at any time, from `after_install`, from `after_migrate` or by
 	hand with `bench execute`. Never raises.
 	"""
-	summary = {"branding": {}, "settings_defaults": [], "faq_seed": None}
+	summary = {
+		"branding": {},
+		"settings_defaults": [],
+		"faq_seed": None,
+		"portal_permissions": [],
+		"support_routing": None,
+		"maintenance_workspace": None,
+	}
 
 	try:
 		from solrise_erp import branding
@@ -178,6 +275,20 @@ def apply_all():
 		summary["faq_seed"] = ensure_faq_seed()
 	except Exception:
 		_log_error("Solrise install: faq seed")
+	try:
+		summary["portal_permissions"] = ensure_portal_permissions()
+	except Exception:
+		_log_error("Solrise install: portal permissions")
+
+	try:
+		# The Desk surface a maintenance manager needs: reports routed to somebody who
+		# can work them, and a workspace to find them in (docs/19).
+		from solrise_erp import desk
+
+		summary["support_routing"] = desk.ensure_support_routing()
+		summary["maintenance_workspace"] = desk.ensure_maintenance_workspace()
+	except Exception:
+		_log_error("Solrise install: maintenance desk surface")
 
 	frappe.logger().info("install: apply_all %s", summary)
 	return summary

@@ -35,11 +35,29 @@ app_include_js = [
     "/assets/solrise_erp/js/solrise_erp.js",
     "/assets/solrise_erp/js/solrise_chat.js",
 ]
-web_include_js = ["/assets/solrise_erp/js/solrise_chat.js"]
+# The portal CSS and JS ride along on every website page. Every rule and handler
+# is namespaced (`.sl-`, `#sl-report`), so they are inert everywhere else, and
+# the script returns immediately when the page has no report form (docs/17).
+web_include_js = [
+    "/assets/solrise_erp/js/solrise_chat.js",
+    "/assets/solrise_erp/js/solrise_portal.js",
+]
+web_include_css = ["/assets/solrise_erp/css/solrise_portal.css"]
 
 # --- boot ------------------------------------------------------------------------
 # Rewrites the app title/logo the platform attaches after boot_session (docs/10).
 boot_session = "solrise_erp.boot.boot_session"
+
+# --- customer portal -------------------------------------------------------------
+# The landing page for the standard `Customer` role: a page of buttons instead of
+# ERPNext's stock portal. `frappe.get_home_page()` -> `get_home_page_via_hooks()`
+# consults this map *after* `Role.home_page` and `Portal Settings`, so it wins for
+# exactly these users and leaves Desk users on `/app`.
+#
+# The value must be a list. Frappe's hook loader hands dict values through and
+# `get_home_page_via_hooks()` indexes the result with `[-1]`, so a bare string
+# `"start"` would resolve to the route `t` (frappe/website/utils.py).
+role_home_page = {"Customer": ["start"]}
 
 # --- row-level permissions -------------------------------------------------------
 # Row filters narrow the list views; has_permission closes the direct-link path for

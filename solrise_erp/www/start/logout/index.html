@@ -1,0 +1,22 @@
+{% extends "templates/web.html" %}
+{#
+	Never rendered: `get_context` redirects to the login form. It exists because a
+	`www/` route needs a template, and so that a bypassed redirect shows something
+	sensible rather than a blank page.
+
+	Chrome is stripped like the other portal pages, because arriving here as a
+	Guest means the website navbar would otherwise offer a stranger every exit.
+#}
+
+{% block banner %}{% endblock %}
+{% block navbar %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<main class="sl-portal">
+	<p class="sl-note">
+		{{ _("You are logged out.") }}
+		<a href="/login">{{ _("Log in") }}</a>
+	</p>
+</main>
+{% endblock %}

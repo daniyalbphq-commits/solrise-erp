@@ -1,0 +1,61 @@
+{% extends "templates/web.html" %}
+{#
+	The customer's landing page. Chrome is stripped (no navbar, no banner, no
+	footer) because every extra link on this page is a way for the reader to get
+	lost; the tiles are the only exits. Blocks are emptied rather than hidden in
+	CSS so nothing is fetched or rendered at all.
+
+	Only `templates/web.html` and `templates/base.html` provide these blocks, so
+	this file must keep extending web.html.
+#}
+
+{% block banner %}{% endblock %}
+{% block navbar %}{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<main class="sl-portal">
+
+	<header class="sl-head">
+		<img class="sl-head__logo"
+			src="/assets/solrise_erp/images/solrise-logo.png"
+			alt="Solrise">
+		<h1 class="sl-head__hello">
+			{{ _("Hello") }}{% if full_name %}, {{ full_name }}{% endif %}
+		</h1>
+		{% if store_count > 1 %}
+		<p class="sl-head__station">{{ _("Your {0} stores").format(store_count) }}</p>
+		{% elif station %}
+		<p class="sl-head__station">{{ station }}</p>
+		{% endif %}
+	</header>
+
+	<nav class="sl-tiles" aria-label="{{ _('What do you need?') }}">
+		{% for tile in tiles %}
+		<a class="sl-tile" href="{{ tile.route }}">
+			<span class="sl-tile__icon" aria-hidden="true">{{ tile.icon }}</span>
+			<span class="sl-tile__label">{{ _(tile.label) }}</span>
+			{% if tile.caption %}
+			<span class="sl-tile__caption">{{ _(tile.caption) }}</span>
+			{% endif %}
+		</a>
+		{% endfor %}
+	</nav>
+
+	{% if open_issues %}
+	<p class="sl-note" role="status">
+		{{ _("You have {0} report(s) with us").format(open_issues) }}
+	</p>
+	{% endif %}
+
+	{# A station phone is shared, so the way out is always on the page - quiet here,
+	   because the button above is what the user came for. #}
+	<footer class="sl-foot">
+		<a class="sl-logout" href="{{ logout_url }}">
+			<span class="sl-logout__icon" aria-hidden="true">&#128682;</span>
+			<span>{{ _("Log out") }}</span>
+		</a>
+	</footer>
+
+</main>
+{% endblock %}
