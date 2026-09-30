@@ -211,6 +211,33 @@ class HookWiringTest(unittest.TestCase):
 			self.assertTrue(os.path.isfile(os.path.join(_app_dir(), *relative)), os.path.join(*relative))
 			self.assertIn(needle, hooks, "{0} is not declared in hooks.py".format(needle))
 
+	def test_a_stray_customer_is_sent_back_to_the_portal(self):
+		"""A station login refused at /app must be offered a way back.
+
+		Frappe answers a `Website User` on a Desk URL with a 403 "Not Permitted"
+		page, which is correct and, for someone who cannot read it, a dead end. The
+		portal scripts are loaded on that page, so they ask `portal_home` and move
+		on. This is structural because the failure it prevents is silent: a renamed
+		endpoint or a dropped call leaves the customer staring at the refusal again,
+		with no test failing anywhere (docs/17 section 12).
+		"""
+		api = _read(os.path.join("api", "portal.py"))
+		self.assertIn("def portal_home(", api)
+		self.assertRegex(
+			api,
+			r'@frappe\.whitelist\(allow_guest=True\)\s*\ndef portal_home\(',
+			"portal_home must admit Guests: the page it rescues may have no session",
+		)
+
+		js = _read(os.path.join("public", "js", "solrise_portal.js"))
+		self.assertIn("function rescue_stray_customer", js)
+		self.assertIn("rescue_stray_customer();", js, "the rescue is defined but never called")
+		self.assertIn("solrise_erp.api.portal.portal_home", js, "the rescue does not ask the server")
+		# Guards, both load-bearing: without the path test this fires on every
+		# page, and without the renderer test it would fight the Desk itself.
+		self.assertIn('data-path") !== "message"', js)
+		self.assertIn("frappe-session-status", js)
+
 	def test_report_template_renders_the_catalogue(self):
 		"""The form must be driven by the catalogue, not by hard-coded buttons."""
 		template = _read("www", "start", "report-issue", "index.html")

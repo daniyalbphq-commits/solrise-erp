@@ -20,6 +20,7 @@ import frappe
 from frappe import _
 
 from solrise_erp.portal import catalog, identity
+from solrise_erp.portal.guard import PORTAL_HOME
 
 ISSUE = "Issue"
 
@@ -281,6 +282,38 @@ def my_issues(limit=20):
 	except Exception:
 		_log_error("Solrise portal: my_issues")
 		return []
+
+
+@frappe.whitelist(allow_guest=True)
+def portal_home():
+	"""Where this session's user belongs, if they are a portal customer.
+
+	Exists for one situation: a station login that wanders onto a Desk URL.
+	Frappe refuses the whole ``/app`` tree to a `Website User` with a "Not
+	Permitted" page, which is the right answer and a dead end - the customer has
+	nowhere to go and no way to read why. The unauthenticated door is worse: a
+	Guest bounced from ``/app/issue`` is sent to
+	``/login?redirect-to=/app/issue``, and after a successful login that lands them
+	back on the refusal (docs/17 section 12).
+
+	The portal's scripts run on that page too (they are declared in
+	``web_include_js``), so they ask this and move on. Deliberately returns the
+	route rather than redirecting: the refusal itself is Frappe's, stays a 403, and
+	is not something this app should be able to weaken.
+
+	Guests and desk users get ``None`` - an empty answer, never an error, so a
+	hook that cannot decide leaves the page exactly as Frappe rendered it.
+	"""
+	try:
+		user = identity.current_user()
+		if not user:
+			return {"home": None}
+		if not identity.resolve(user=user):
+			return {"home": None}
+		return {"home": PORTAL_HOME, "name": identity.display_name(user)}
+	except Exception:
+		_log_error("Solrise portal: portal_home")
+		return {"home": None}
 
 
 def open_issue_count(user=None):

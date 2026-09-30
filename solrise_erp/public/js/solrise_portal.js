@@ -332,8 +332,50 @@
 
 	/* ----------------------------------------------------------------- start */
 
+	/* A station login that strays onto a Desk URL. Frappe refuses the whole /app
+	   tree to a `Website User` with a "Not Permitted" page - the correct answer, and
+	   a dead end for someone who cannot read it. This file is already loaded on that
+	   page (`web_include_js`), so ask the server where they belong and go there.
+	   Only ever fires on a Frappe message/error page under /app, and the refusal
+	   itself is untouched: this moves the user, it grants nothing. */
+	function rescue_stray_customer() {
+		try {
+			if (!/^\/app(\/|$)/.test(window.location.pathname)) {
+				return;
+			}
+			if (document.body.getAttribute("frappe-session-status") !== "logged-in") {
+				return;
+			}
+			/* data-path is the renderer's name; "message" is the do-not-have-access,
+			   not-found and error page. A working Desk route sets something else. */
+			if (document.body.getAttribute("data-path") !== "message") {
+				return;
+			}
+			window.fetch("/api/method/solrise_erp.api.portal.portal_home", {
+				headers: { Accept: "application/json" },
+				credentials: "same-origin"
+			})
+				.then(function (response) {
+					return response.json();
+				})
+				.then(function (payload) {
+					var home = payload && payload.message && payload.message.home;
+					if (home) {
+						log("sending a portal user to " + home);
+						window.location.replace(home);
+					}
+				})
+				.catch(function () {
+					/* Leave the page as Frappe rendered it. */
+				});
+		} catch (e) {
+			log("rescue failed", e);
+		}
+	}
+
 	function on_ready() {
 		try {
+			rescue_stray_customer();
 			var form = by_id("sl-report");
 			if (!form) {
 				return;
