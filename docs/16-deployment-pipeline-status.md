@@ -4,11 +4,12 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-10-01. The vault is repaired, the customer portal and the
-store master data are deployed and verified (§5.6), the mail account is live, and
-the boot unit and nightly backup are installed (§6 item 2 is closed). What is
-left is the operator's: the LLM provider key (§6 item 10) and the store logins
-(§6 item 14).
+Last updated: 2026-10-01. The vault is repaired, the customer portal shipped and
+then had to be fixed (docs/17 section 4.1), the store master data and 26 store
+logins are live, mail is configured, and the boot unit and nightly backup are
+installed and proved (§6 item 2 is closed). What is left is the operator's: the
+LLM provider key (§6 item 10), rotating the store password (§6 item 14), and
+deploying the app revision recorded in `.build/app-rev`.
 
 ---
 
@@ -404,14 +405,25 @@ image is config `a4178f12`, build run **10**.
 | The site answers | `curl` | `/login` `200`, `/api/method/ping` `200`, `/start` and `/start/logout` `301` (to `/login`) |
 | CSS is served | `curl -I` | `erpnext.bundle.4JCFPWFM.css` → `200 text/css`; the old hashed URL from the "broken CSS" report is gone |
 | Mail | `./scripts/configure_email.sh` with `SL_TEST_TO` | authenticated SMTP over implicit TLS, test message delivered; `Email Queue` = `Sent` |
+| A report actually files | `POST api/method/solrise_erp.api.portal.create_issue` as a store login | `ISS-2026-00001` created, subject `Refrigeration - Solrise 39`, priority `High`, assigned to a Support Manager |
+| The store logins work | `POST /api/method/login` with the national digits | `7019892311` → Brett Van Dam, `home_page` `/start`; a wrong password is refused |
+| One store vs four | same, `/start/report-issue` | Brett gets the form directly; Tammy's picker offers her Solrise 28/30/31/42 and not 39 |
 | Boot unit | `systemctl --user is-enabled/is-active solrise` | `enabled`, `active` |
 | Nightly backup | the cron job's own command, run once | 1.8 MB written to `/opt/solrise-erp/backups/<stamp>/` |
 
-**The store logins are deliberately not created yet.** `import_stores.sh` ran
-without `STORES_DEFAULT_PASSWORD`, so the Customers, Addresses and Contacts exist
-but no `User` does. The password is a production decision (§6 item 14):
-docs/18 §5.2 calls one shared password across 26 accounts a rehearsal measure,
-and nothing can be mailed to a `.invalid` address to reset it.
+**The store logins were created on request, with one password for all of them.**
+`STORES_DEFAULT_PASSWORD='sol-cust-1' SITE_ENV=aws ./scripts/import_stores.sh`
+created 26 logins covering 31 of the 32 store rows (the 5 Montana stores have no
+manager in the sheet, and one `Saqib` Customer is not from the sheet at all).
+This is the interim the docs warn about - the operator asked for it explicitly and
+intends to replace the passwords later. `scripts/store_logins.py` prints the
+hand-out sheet, including the password column when `STORE_LOGINS_PASSWORD` is set.
+
+**The submission path needed a fix the same day.** The first real report from the
+station UI came back as `PermissionError: No permission to share Issue`. The
+cause, the evidence and the fix are docs/17 section 4.1; the corrected grant was
+applied to the live site immediately, and the durable fix is in the app revision
+recorded in `.build/app-rev` (build run 11).
 
 **What this deploy fixed, beyond shipping the app** - all three were found by
 actually running the thing, and all three are recorded in §7:
@@ -522,22 +534,18 @@ actually running the thing, and all three are recorded in §7:
     Still open under this item: the mail server's TLS certificate expires
     **2026-10-02** (the day after this was written). Renew it on the mail host or
     outbound mail starts failing closed.
-14. **The 26 store logins do not exist yet - this needs a decision, not a task.**
-    The store master data is live (§5.6), but no `User` was created for any
-    manager, because the only thing `import_stores.sh` asks for is a password and
-    that was not a call worth making on someone's behalf:
-    * one password would be shared by all 26 accounts, and `docs/18` §5.2 calls
-      that a rehearsal measure;
-    * the logins use `@stores.invalid` placeholders, so "Forgot password" can never
-      work - a forgotten password has to be reset in the Desk.
-
-    To create them, run this once on the host with a password you choose:
-    ```bash
-    STORES_DEFAULT_PASSWORD='...' SITE_ENV=aws ./scripts/import_stores.sh
-    ```
-    It is idempotent, so it can follow every future deploy. Filling the CSV's
-    `email` column first would make each login real and fix the reset path - that
-    is the production-grade version (docs/18 §5.3).
+14. ~~**The 26 store logins do not exist yet.**~~ **Created 2026-10-01 on request,**
+    with one shared password (`sol-cust-1`) - the operator's explicit call, to be
+    replaced later. What is still open from this item:
+    * **the shared password is a rehearsal measure** (docs/18 §5.2). Rotate it, or
+      fill the CSV's `email` column so each login is a real account and
+      "Forgot password" works - today a forgotten password must be reset in the
+      Desk, because nothing can be delivered to `@stores.invalid`.
+    * **the 5 Montana stores (Solrise 51-55) have no manager in the sheet**, so no
+      contact and no possible login. That is a gap in `New Stores info.xlsx`.
+    * `scripts/store_logins.py` (`make logins`) prints the hand-out sheet - one row
+      per manager per store, with the sign-in username and, when
+      `STORE_LOGINS_PASSWORD` is set, the password column.
 
 ## 7. Things that bit us (do not relearn these)
 
@@ -567,9 +575,25 @@ actually running the thing, and all three are recorded in §7:
   an orphan whose root is the Frappe app, so it has no `.github/` (nothing to
   trigger) and no `scripts/build-image.sh` (nothing for the job's own checkout to
   run). Published app, stale image, no run in the Actions tab - and it looks like
-  a successful publish. The trigger is `main` only now, `publish-app.sh` ends by
-  saying so, and the build is started by hand:
-  `gh workflow run build-image.yml -f tag=version-15`.
+  a successful publish. The trigger is `main` only, and the handshake is
+  **`.build/app-rev`**: record the published revision there and push, which both
+  starts the build and leaves the answer to "which app commit is in this image?"
+  in the repository. `publish-app.sh` now ends by printing the exact line to add
+  instead of implying the publish was enough.
+* **A Customer could not submit a report, because `share` was 0.** Found on the
+  live site the day the portal went out, and the worst kind of bug: intermittent.
+  Frappe's assignment path (`assign_to._add` -> `frappe.share.add`) shares a
+  newly assigned document with its assignee **as the user who created it** - the
+  station employee - and `check_share_permission` requires the acting user to
+  hold `share`. The Customer grant listed every flag except that one, so the
+  submission died at the last step with `No permission to share Issue` and was
+  rolled back: the customer's report vanished and the page showed a failure. It
+  only fires when `has_permission(doc, user=assignee)` is False, so which
+  assignee the rule picks decides whether it happens at all. `install.py` now
+  grants `share` (still `if_owner`, so only the customer's own reports), and
+  `install.ensure_portal_permissions()` **reconciles** an existing `Custom
+  DocPerm` instead of skipping it - the skip is why the fix would otherwise never
+  have reached the site that already had the row. See docs/17 section 4.1.
 * **A re-pushed tag does not roll out by itself.** `podman-compose up -d` compares
   service *configuration*, not the image digest, so after `podman pull` the old
   containers keep running and the new image is silently unused. This is why

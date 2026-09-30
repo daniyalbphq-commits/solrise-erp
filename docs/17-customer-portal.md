@@ -85,14 +85,46 @@ migrate if the row is missing:
 
 | Field | Value |
 |---|---|
-| `read`, `write`, `create` | 1 |
+| `read`, `write`, `create`, `share` | 1 |
 | `if_owner` | **1** |
-| `delete`, `report`, `export`, `import`, `share`, `print`, `email`, `submit`, `cancel`, `amend`, `select` | 0 |
+| `delete`, `report`, `export`, `import`, `print`, `email`, `submit`, `cancel`, `amend`, `select` | 0 |
 
 `if_owner` is the whole security story: a customer sees their own reports and
 nobody else's. It is deliberately *not* mirrored into
 `permissions.issue_query_conditions()` — that hook narrows Support Agents, and
 returning `None` for everyone else lets the role's own `if_owner` rule apply.
+
+### 4.1 Why `share` is 1, against every instinct
+
+It was 0 until it broke the feature on the live site (2026-10-01).
+
+A report submitted from the portal is assigned to a Support Manager by the
+`Solrise Support Routing` assignment rule. Frappe's assignment path
+(`assign_to._add`) shares the newly assigned document with the assignee **as the
+user who created it** — the station employee — and `frappe.share.add` begins with
+`check_share_permission()`, which requires the acting user to hold `share`:
+
+```
+PermissionError: No permission to share Issue ISS-2026-00001
+  share.py check_share_permission
+  ← share.add ← assign_to._add ← assignment_rule.do_assignment
+  ← apply_assignment_rule ← Communication.on_update ← Issue.create_communication
+```
+
+So the row that looked like least privilege turned every submission into a
+rolled-back failure at the last step. It is also intermittent, which is worse: the
+share only happens when `has_permission(doc, user=assignee)` is False, so the bug
+appears or not depending on which assignee the rule picks and how their roles
+have been cached.
+
+`if_owner: 1` keeps this honest — a customer can share **their own** report, which
+is exactly what the support workflow does, and cannot share anything else.
+`verify_portal.py` checks all four flags so this cannot silently regress.
+
+> The underlying oddity is upstream Frappe: `assign_to._add` calls
+> `frappe.share.add()` without the `flags={"ignore_share_permission": True}` that
+> `add_docshare()` already supports. Granting `share` is the fix available to us
+> that does not patch Frappe.
 
 `File` needs no grant: Frappe's `File` DocType already includes the `All` role, so
 photo uploads work. `Comment` is not granted, which is why the portal does **not**

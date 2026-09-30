@@ -1,0 +1,28 @@
+# The Solrise app revision the image should be built from.
+#
+# Why this file exists: the app is published as an *orphan* branch
+# (`scripts/publish-app.sh` -> `solrise_erp-app`) whose root is the Frappe app.
+# Such a branch carries no `.github/`, so a push to it can neither start a
+# workflow nor check out a tree that could run one - publishing the app rebuilds
+# nothing by itself, and the only other trigger is a hand-run
+# `gh workflow run build-image.yml`.
+#
+# This file is the handshake that closes that gap: `build-image.yml` watches it,
+# so recording the revision that was just published - together with what changed
+# and why - is what asks CI to build. It also leaves the answer to "which app
+# commit is in this image?" in the repository rather than in a shell history.
+#
+# Written by hand on purpose. A file the build *reads* should not also be a file
+# some other process rewrites underneath it.
+#
+#   branch                                     commit
+solrise_erp-app                                f921b6a703c7ac285112c90899ef53eb5a6d26c7
+
+# 2026-10-01  The customer portal could not submit a report from the station UI:
+#             Frappe's assignment path shares a newly assigned Issue with its
+#             assignee *as the reporting customer*, which requires the Customer
+#             role to hold `share` on Issue. install.py granted every flag there
+#             except that one, so every submission rolled back with
+#             "No permission to share Issue". Also reconciles the existing
+#             Custom DocPerm instead of skipping it, so a fix like this reaches
+#             a site that already has the row. (docs/17 section 4.1)

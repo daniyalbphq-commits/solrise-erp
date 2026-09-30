@@ -57,9 +57,11 @@ fi
 # would push the whole deployment repository as the app branch - the one mistake
 # this script must never make.
 REPO_TOP="$(git -C "${SRC}" rev-parse --show-toplevel 2>/dev/null || true)"
+PUBLISHED_SHA=""
 if [ -n "${REPO_TOP}" ] && [ "$(cd "${REPO_TOP}" && pwd -P)" = "${SRC}" ]; then
   DIRTY="$(git -C "${SRC}" status --porcelain | wc -l)"
   [ "${DIRTY}" -eq 0 ] || log "note: ${DIRTY} uncommitted change(s) in the checkout will NOT be published"
+  PUBLISHED_SHA="$(git -C "${SRC}" rev-parse HEAD)"
   log "pushing $(git -C "${SRC}" rev-parse --short HEAD) -> ${REMOTE} ${BRANCH}"
   if [ "${DRY}" = "1" ]; then
     log "DRY_RUN=1 - not pushing"
@@ -97,6 +99,7 @@ else
     git commit -q -m "Solrise app snapshot from ${SRC}"
     log "committed $(git rev-parse --short HEAD): $(git ls-tree -r --name-only HEAD | wc -l) file(s)"
   fi
+  PUBLISHED_SHA="$(git rev-parse HEAD)"
   if [ "${DRY}" = "1" ]; then
     log "DRY_RUN=1 - not pushing (branch ${BRANCH} exists only in ${TMP})"
     trap - EXIT
@@ -128,11 +131,16 @@ echo
 echo "  (private repo? use https://x-access-token:<PAT>@<host>/<owner>/<repo> for SOLRISE_APP_URL)"
 echo
 # The app branch is an orphan branch that holds only the Frappe app, so it has no
-# .github/ and cannot start a workflow. A publish therefore rebuilds nothing by
-# itself - say so here rather than leave a green-looking publish behind a stale
-# image.
-log "this did NOT rebuild the image - the app branch carries no workflow"
-echo "  trigger the build yourself, then deploy:"
-echo "    gh workflow run build-image.yml -f tag=version-15"
-echo "    gh run watch"
-echo "    cd infra/ansible && ansible-playbook site.yml"
+# .github/ and cannot start a workflow. `.build/app-rev` is the handshake that can
+# (build-image.yml watches it), so the publish is not finished until the revision
+# is recorded there - otherwise the image silently keeps the old app.
+log "the app branch is published, but this did NOT rebuild the image"
+echo "  the branch is a Frappe app, so it carries no workflow. Record the revision"
+echo "  in .build/app-rev and push - that push is what asks CI to rebuild:"
+echo ""
+echo "    app-rev line:  ${BRANCH}  ${PUBLISHED_SHA:-<sha, printed above>}"
+echo "    then:          git add .build/app-rev && git commit -m 'Rebuild the image' && git push"
+echo "                   gh run watch"
+echo ""
+echo "  (keep the note in that file saying what changed and why - it is the only"
+echo "   record of which app revision an image carries.)"

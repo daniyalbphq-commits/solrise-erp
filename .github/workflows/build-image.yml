@@ -1,12 +1,13 @@
 # =============================================================================
 # Build the Solrise ERP image in CI and push it to Docker Hub.
 #
-# Runs on every change to the app list or the build machinery on `main`, or by
-# hand:
+# Runs on every change to the app list, the published app revision or the build
+# machinery on `main`, or by hand:
 #   gh workflow run build-image.yml -f tag=version-15
 #
-# Publishing the app (scripts/publish-app.sh) does not trigger a run by itself -
-# see the note on `on.push` below - so publish it *then* trigger the build.
+# Publishing the app does not trigger a run by itself - see the note on
+# `on.push` below - so publish it, record the revision in `.build/app-rev`, and
+# let that push start the build.
 #
 # Ansible only *pulls* the image on the host (CUSTOM_IMAGE:CUSTOM_TAG in .env),
 # so the slow bake (frappe + erpnext + hrms + the Solrise app + cloud_storage)
@@ -56,13 +57,14 @@ on:
     # `solrise_erp-app` deliberately does NOT trigger this: it is an orphan
     # branch whose root is the Frappe app, so it has no .github/ and no
     # scripts/build-image.sh - a push there can neither start a workflow nor
-    # check out a tree this job could run in. Publishing the app is therefore
-    # not enough on its own; trigger the build explicitly after it:
-    #   gh workflow run build-image.yml -f tag=version-15
+    # check out a tree this job could run in. Publishing the app therefore asks
+    # for a rebuild by recording what was published in `.build/app-rev`, which
+    # IS watched here (and is the record of which revision an image carries).
     branches: [main]
     paths:
       - "apps.json"
       - "apps.example.json"
+      - ".build/app-rev"
       - "scripts/build-image.sh"
       - "scripts/push-image.sh"
       - "scripts/apps-fingerprint.py"
