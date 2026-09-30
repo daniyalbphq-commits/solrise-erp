@@ -588,6 +588,16 @@ Reads use `ignore_permissions=True` for the message query only, because a
 is what makes that safe, and it is stated twice on purpose — in the query, and
 again in `detail()`.
 
+**The report's own echo is the note, not a message.** Filing a report makes the
+platform copy the customer's words onto the ticket (`Received`) so the support
+team can see them. Treating that as a message had two visible wrongs: the detail
+page printed the customer's words twice — once as the note, once under "Updates" —
+and because *every* report has one, every row on the home page said "There is an
+update", which made the words mean nothing. So the echo becomes `note` (it is what
+they actually typed, where `description` is the portal's composed HTML), and the
+row flag counts only what Solrise **`Sent`**. "There is an update" now means a
+person wrote to you.
+
 ### 13.4 What it does not do
 
 * **No customer replies.** The portal is read-only here; a customer who answers a

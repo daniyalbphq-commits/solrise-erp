@@ -409,6 +409,8 @@ image is config `a4178f12`, build run **10**.
 | The store logins work | `POST /api/method/login` with the national digits | `7019892311` → Brett Van Dam, `home_page` `/start`; a wrong password is refused |
 | One store vs four | same, `/start/report-issue` | Brett gets the form directly; Tammy's picker offers her Solrise 28/30/31/42 and not 39 |
 | A stray login is sent back | `api.portal.portal_home` | customer → `{"home": "/start"}`; Guest and desk user → `{"home": null}` |
+| The customer sees their own open reports | `SITE_ENV=aws make verify-portal` | the list is the caller's own *and* only the open ones; another station's report returns `None` to them, and a `403` at the REST layer |
+| The updates render | `/start` and `/start/my-report?name=…` as two store logins | each home lists only its own reports; only the one with a reply says "There is an update"; the detail shows the reply, and the customer's own words once |
 | The 403 page can still rescue | `curl /app` as a store login | `403` whose body carries `solrise_portal.js`, `frappe-session-status="logged-in"` and `data-path="message"` - all three guards |
 | Boot unit | `systemctl --user is-enabled/is-active solrise` | `enabled`, `active` |
 | Nightly backup | the cron job's own command, run once | 1.8 MB written to `/opt/solrise-erp/backups/<stamp>/` |
