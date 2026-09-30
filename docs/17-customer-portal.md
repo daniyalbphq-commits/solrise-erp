@@ -220,17 +220,16 @@ under an existing `/assets/solrise_erp/` mount.
 
 ## 8. Known limits
 
-- **The customer cannot see the reply thread.** The portal is a landing page and a
-  form; replies arrive by e-mail, which is what `docs/13` section 12 describes.
-  Adding an in-portal thread needs read/create on `Comment`/`Communication`, which
-  is a deliberate decision, not an oversight.
+- ~~**The customer cannot see the reply thread.**~~ **Done** — the home page lists
+their reports and each one opens its updates. Messages come from `Communication`
+and never from `Comment`, so the support team's internal notes stay internal; see
+section 13 for the rule and why it is drawn there.
 - **iPhone HEIC photos are downscaled client-side, so they do not survive.** The
   browser cannot decode HEIC to a canvas, and the server accepts only
   JPEG/PNG/WebP. The report is still filed, without the photo. Fixing it properly
   means transcoding server-side.
-- **The confirmation screen is the only feedback.** There is no "my reports" list
-  yet, though `api.portal.my_issues()` already exists for it. The home page shows
-  a count of open reports instead.
+- ~~**The confirmation screen is the only feedback.**~~ **Done** — the home page
+  shows the reports themselves rather than a count of them (section 13).
 - **Labels are not translated.** They pass through `_()` (so a translation can be
   added), but no translations are shipped.
 - **`web_include_css`/`web_include_js` load on every website page.** Both files are
@@ -499,3 +498,102 @@ refusal stays Frappe's — the 403 is still returned, and this app cannot weaken
 
 > The 403 remains the security boundary and is unchanged. This only gives the
 > person a door out of the room Frappe put them in.
+
+## 13. "Is anyone coming?" — the customer's own reports
+
+A station manager could file a report and then never learn anything about it. The
+support team's reply is an **e-mail**, and these logins have no deliverable address
+(`@stores.invalid`, docs/18 section 5) — so the portal is not a convenience here,
+it is the only channel that can answer the question. The home page therefore lists
+the customer's reports, and each one opens its updates.
+
+```
+/start                      the tiles + "Your reports" (state, store, age, "There is an update")
+  -> /start/my-report?name= <state band>, what you reported, your photo, the messages
+```
+
+Nothing new was granted to make this work. `api.portal.my_issues()` already existed
+for it, and `portal/reports.py` reads the same rows — through `frappe.get_list` with
+an explicit `owner` filter, and with `detail()` re-checking ownership after the
+fact, because `frappe.get_doc` does not enforce permissions and a page that fetched
+its own doc would hand any customer any report whose name they could guess.
+`verify_portal.py` checks exactly that: a report belonging to another station must
+come back `None` for the caller.
+
+### 13.1 Two scopes, and one of them is not symmetric
+
+**Only your own.** Enforced twice on purpose — in the query (`"owner": user`) and
+again in `detail()` after the document is read. Frappe's own permission stack is the
+third layer, and it holds: measured on the live site as two different store logins,
+`/api/resource/Issue` returns each customer only their own rows, and
+their own `ISS-2026-00001` is a **403** to the other.
+
+**Only the ones still open.** `rows()` excludes `FINISHED_STATUSES`
+(`Resolved`, `Closed`), because the screen exists to answer "is anyone coming?" and
+a fixed report has already answered it. This is a **deny-list**, not a list of
+"open" statuses, deliberately: if an upstream release adds a status an allow-list
+would silently hide real reports — a customer unable to see something they filed —
+whereas this shows it as `Waiting`, which understates rather than hides.
+
+`detail()` does **not** apply that filter. The list is scoped so the screen shows
+what needs attention; the detail page stays open to any of the caller's own reports
+so that a fix never becomes invisible to the person who reported it, and a link
+someone kept still works. Both halves are pinned by tests, because they are exactly
+the kind of thing a later tidy-up would "unify" the wrong way. Flip
+`reports.SHOW_FINISHED` to list finished reports too.
+
+### 13.2 Five ERP statuses become four customer states
+
+`Issue.status` is `Open`, `Replied`, `On Hold`, `Resolved`, `Closed` — five words
+about a *workflow*, shown to someone who may not read comfortably and wants one
+thing: is anyone coming? So the states are four, and they are carried by an icon
+and a colour first and a word second (`portal/catalog.STATES`):
+
+| `Issue.status` | State | Icon | Tone |
+|---|---|---|---|
+| `Open` | Waiting | ⏳ | blue |
+| `Replied` | In progress | 💬 | amber |
+| `On Hold` | On hold | ⏸️ | grey |
+| `Resolved`, `Closed` | Fixed | ✅ | green |
+
+An **unrecognised status answers `waiting`**. Telling someone their report is less
+far along than it is costs a phone call; telling them it is fixed when it is not
+costs a breakdown at the pump. `verify_portal.py` re-reads the DocType's own
+option list on every deploy, so an upstream release that adds a status is caught
+rather than silently shown as "Waiting" forever.
+
+The list also never shows raw status words, and the state chips are the only
+colour-coded element on the page — see the note on `--sl-tone-*` in the
+stylesheet.
+
+### 13.3 Messages, and where the privacy line is
+
+An update is a `Communication`; it is **never** a `Comment`. That is the whole
+rule, and it is why this reads messages rather than the Issue timeline:
+
+* a **Communication** is a message between the two parties — the customer's own
+  report, and what the support team sent them;
+* a **Comment** is an internal note the team writes to each other. It stays
+  internal, and is not read here at all.
+
+`Automated Message` rows (the platform telling itself a ticket exists) are
+filtered out as noise. Bodies are reduced to plain text and **addresses are
+dropped** — a message is labelled `You` or `Solrise` and carries the body and the
+time, nothing else — so a reply that happened to CC a vendor cannot put that
+address on a station phone. `verify_portal.py` fails the deploy if a rendered
+message contains an `@`.
+
+Reads use `ignore_permissions=True` for the message query only, because a
+`Customer` has no business holding a `Communication` grant; the ownership filter
+is what makes that safe, and it is stated twice on purpose — in the query, and
+again in `detail()`.
+
+### 13.4 What it does not do
+
+* **No customer replies.** The portal is read-only here; a customer who answers a
+  reply does so off-portal, which holds up while the store logins have no real
+  e-mail address. An in-portal reply is a write path and needs its own design.
+* **No push, no badge.** The update is discovered by opening the portal, which is
+  why the row says "There is an update" rather than showing a count of unread
+  things nobody would maintain.
+* **No attachments on our replies.** Only the customer's own photo is shown.

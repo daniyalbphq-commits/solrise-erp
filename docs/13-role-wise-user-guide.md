@@ -491,18 +491,27 @@ flowchart TD
     G --> H[Send]
     H --> I[Big green tick]
     I --> B
-    B --> J[Agent replies - you get an email]
+    B --> K[Your reports - open ones, with their state]
+    K --> L[Open one - the updates from Solrise]
+    L --> B
 ```
 
 **Steps**
-1. Log in to the portal; you land on the button page.
+1. Log in to the portal; you land on the button page. Under the button is
+   **Your reports**: the ones still open, each showing an icon and a colour for
+   its state, and the words "There is an update" when the support team has written
+   to you.
 2. **Report a problem**: tap the picture that matches, say whether it is urgent,
    add a photo if you can, and press **Send**.
-3. Wait for an e-mail from the support team, and reply to it if they ask
-   something.
-4. Tell the agent when the problem is fixed so they can close it.
+3. **Tap one of your reports** to read its updates - what you reported, and every
+   message Solrise has sent you about it. The biggest thing on that screen is the
+   state: *Waiting*, *In progress*, *On hold* or *Fixed*.
+4. Tap **Back** to return to the button page, and **Log out** when you are
+   finished - the phone is shared.
 
-**Guardrails:** you see only your own reports (`if_owner` row filter); no
+**Guardrails:** you see only your own reports, and only the ones still open - a
+report that is *Fixed* leaves the list (`if_owner` row filter plus an explicit
+owner filter in `portal/reports.py`; docs/17 section 13.1). No
 report/export/delete access. The portal is the same site - never share a portal
 account.
 

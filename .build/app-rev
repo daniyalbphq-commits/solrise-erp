@@ -16,7 +16,15 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                cfdd3f735f33256a7bb3f46aa4cf0106922f924c
+solrise_erp-app                                3b15368d2abb565ada916d6634c93f49543b4e50
+
+# 2026-10-01  "Is anyone coming?": the home page now lists the customer's own
+#             open reports, and each one opens its updates. Updates come from
+#             Communication and never from Comment, so internal notes stay
+#             internal; bodies are plain text with addresses dropped. Scoped to
+#             owner (re-checked after the read) and to open - a Fixed report
+#             leaves the list, but a link to one still opens. docs/17 section 13.
+#
 
 # 2026-10-01  A station login that strays onto a Desk URL was left staring at
 #             Frappe's 403 "You are not permitted to access this page", and the

@@ -204,16 +204,158 @@ def check_portal_api():
 
 
 def _sample_customer_user():
-    """One enabled user carrying the Customer role, for the permission probes."""
+    """One enabled *portal* user carrying the Customer role, for the checks.
+
+    A `Website User` specifically: a desk account that happens to hold the
+    Customer role too (a support manager who also runs a store) would pass every
+    check here while proving nothing about what a station phone can reach.
+    """
     users = frappe.get_all(
         "Has Role",
         filters={"role": "Customer", "parenttype": "User"},
         pluck="parent",
     )
-    for name in users:
-        if frappe.db.get_value("User", name, "enabled"):
-            return name
-    return None
+    portal = []
+    other = []
+    for name in sorted(set(users)):
+        if not frappe.db.get_value("User", name, "enabled"):
+            continue
+        if frappe.db.get_value("User", name, "user_type") == "Website User":
+            portal.append(name)
+        else:
+            other.append(name)
+    return (portal or other or [None])[0]
+
+
+def check_my_reports():
+    """The customer's own reports, and the updates on them (docs/17 section 13)."""
+    print("your reports:")
+    from solrise_erp.portal import catalog, reports
+
+    # The state vocabulary is a transcription of the DocType's Select options, so
+    # ask the DocType. An upstream release that adds a status would otherwise show
+    # it as "Waiting" forever, and nothing would say so.
+    options = [
+        option.strip()
+        for option in str(frappe.get_meta("Issue").get_field("status").options or "").splitlines()
+        if option.strip()
+    ]
+    unmapped = [option for option in options if option not in catalog.STATUS_TO_STATE]
+    check(
+        f"every Issue status has a customer state ({len(options)} of them)",
+        bool(options) and not unmapped,
+        f"unmapped: {unmapped}",
+    )
+
+    app_root = os.path.join(BENCH, "apps", "solrise_erp", "solrise_erp")
+    for relative in ("www/start/my-report/index.html", "www/start/my-report/index.py"):
+        path = os.path.join(app_root, relative)
+        check(f"the detail page exists: {relative}", os.path.exists(path), path)
+
+    home = _app_file("www/start/index.html")
+    check(
+        "the home page lists the reports and links to them",
+        "reports" in home and "/start/my-report" in home,
+    )
+
+    sample = _sample_customer_user()
+    if not sample:
+        warn("no portal login to read reports for", "see docs/18 section 5")
+        return
+
+    mine = reports.rows(user=sample)
+    check(f"{sample} can list their own reports", isinstance(mine, list), f"{len(mine)} row(s)")
+
+    # Scope one: only their own. Every row must be theirs - a list that leaked
+    # another station's report would still be a list of the right length.
+    stranger = [row for row in mine if str(row.get("name")) and not _owned_by(row.get("name"), sample)]
+    check(f"every row is {sample}'s own report", not stranger, f"{stranger[:2]}")
+
+    # Scope two: only the open ones. Counted independently of the code under test.
+    if reports.SHOW_FINISHED:
+        warn("finished reports are listed too", "reports.SHOW_FINISHED is True")
+    else:
+        expected = frappe.db.count(
+            "Issue",
+            {
+                "owner": sample,
+                "status": ["not in", list(reports.FINISHED_STATUSES)],
+            },
+        )
+        check(
+            f"the list holds only {sample}'s open reports",
+            len(mine) == min(expected, reports.LIST_LIMIT),
+            f"{len(mine)} shown, {expected} open",
+        )
+        finished = frappe.db.count(
+            "Issue",
+            {"owner": sample, "status": ["in", list(reports.FINISHED_STATUSES)]},
+        )
+        if finished:
+            check(
+                f"the {finished} finished report(s) are not listed",
+                not any(row.get("status") in reports.FINISHED_STATUSES for row in mine),
+            )
+
+    # The check that matters: a report belonging to somebody else must not be
+    # readable by name. This is the whole reason `reports.detail()` exists rather
+    # than the page fetching a doc itself.
+    other = frappe.db.get_value(
+        "Issue",
+        {"owner": ["not in", ["", sample]]},
+        ["name", "owner"],
+        as_dict=True,
+    )
+    if not other:
+        warn(
+            "no other customer's report to try",
+            "file one from another station to exercise the isolation check",
+        )
+    else:
+        check(
+            f"another station's report is invisible to {sample}",
+            reports.detail(user=sample, name=other.name) is None,
+            f"{other.name} belongs to {other.owner}",
+        )
+
+    own = frappe.db.get_value("Issue", {"owner": sample}, ["name"], as_dict=True)
+    if not own:
+        warn(f"{sample} has no report of their own", "file one from the portal to exercise this")
+        return
+    detail = reports.detail(user=sample, name=own.name)
+    check(f"{sample} can read their own report", bool(detail), own.name)
+    if not detail:
+        return
+    for field in ("name", "state", "messages", "has_update", "note", "store_label"):
+        check(f"the detail carries {field}", field in detail)
+    check(
+        "its state is one the catalogue renders",
+        detail.get("state", {}).get("key") in {state["key"] for state in catalog.STATES},
+        str(detail.get("state", {}).get("key")),
+    )
+    # A message is a Communication and never a Comment, which is the line that
+    # keeps the support team's internal notes off a station phone.
+    leaked = [m for m in detail.get("messages") or [] if "@" in str(m.get("text", ""))]
+    check("no addresses are shown to the customer", not leaked, f"{len(leaked)} message(s)")
+
+
+def _owned_by(issue_name, user):
+    """True when `issue_name` belongs to `user`, read without permissions."""
+    try:
+        owner = frappe.db.get_value("Issue", issue_name, "owner")
+    except Exception:  # noqa: BLE001
+        return False
+    return str(owner or "").lower() == str(user or "").lower()
+
+
+def _app_file(relative):
+    """Read a file from the installed app, or "" if it is not there."""
+    try:
+        with open(os.path.join(BENCH, "apps", "solrise_erp", "solrise_erp", relative),
+                  encoding="utf-8") as handle:
+            return handle.read()
+    except Exception:  # noqa: BLE001 - a missing file is a failed check, not a crash
+        return ""
 
 
 def check_support_routing():
@@ -253,6 +395,8 @@ def main():
         check_store_data()
         print()
         check_portal_api()
+        print()
+        check_my_reports()
         print()
         check_support_routing()
     finally:
