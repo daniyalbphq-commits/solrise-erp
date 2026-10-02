@@ -184,6 +184,64 @@ def stores(user=None):
 	return found
 
 
+def managers(customer=None, user=None):
+	"""The manager names on record for a store, best first.
+
+	The report form's "Customer" picker, so somebody on a shared station phone can
+	say who is actually reporting rather than leaving it to whoever the login
+	belongs to.
+
+	Read from the Contacts the importer linked to the Customer (docs/18 section 4),
+	not from the sheet: that keeps one source of truth, and the Contacts are already
+	normalised. The sheet writes some names "Last, First" - `"Van Dam, Brett"` -
+	and others "First Last" - `"Tammy Hoeppner"` - so its commas separate surname
+	from forename, and are not a list of people.
+
+	The logged-in user is put first when they are among them, because on a station
+	phone the account holder is the usual reporter. Empty list when the store has
+	no contact at all.
+	"""
+	try:
+		links = frappe.get_all(
+			"Dynamic Link",
+			filters={
+				"parenttype": "Contact",
+				"link_doctype": "Customer",
+				"link_name": customer,
+			},
+			pluck="parent",
+		)
+	except Exception:
+		_log_error("Solrise portal: managers")
+		return []
+	if not links:
+		return []
+
+	mine = (user or current_user() or "").lower()
+	found = []
+	theirs = []
+	for name in sorted(set(links)):
+		try:
+			contact = frappe.get_doc("Contact", name)
+		except Exception:
+			continue
+		label = " ".join(
+			part.strip()
+			for part in (contact.get("first_name"), contact.get("last_name"))
+			if part
+		).strip() or name
+		if (contact.get("user") or "").lower() == mine:
+			found.append(label)
+		else:
+			theirs.append(label)
+
+	ordered = []
+	for label in found + theirs:
+		if label and label not in ordered:
+			ordered.append(label)
+	return ordered
+
+
 def display_name(user=None):
 	"""The user's full name, falling back to the part before the ``@``."""
 	user = user or current_user()

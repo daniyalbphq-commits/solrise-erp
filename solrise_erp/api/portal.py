@@ -28,6 +28,11 @@ ISSUE = "Issue"
 DESCRIPTION_LIMIT = 2000
 SUBJECT_LIMIT = 140
 
+#: The "Customer" picker value: a person name, chosen from the store manager
+#: list. Long enough for a full name, short enough that it cannot be used to
+#: stuff the record line.
+REPORTER_LIMIT = 80
+
 #: A downscaled phone photo is a few hundred KB. This is the post-decode ceiling,
 #: so a client that skips the resize still cannot post an unbounded body.
 PHOTO_BYTES_LIMIT = 6 * 1024 * 1024
@@ -119,26 +124,29 @@ def _subject(category_label, station, person):
 	return _text("{0} - {1}".format(category_label, where), SUBJECT_LIMIT)
 
 
-def _description_html(category_label, urgency_label, note):
+def _description_html(category_label, urgency_label, note, reporter=""):
 	"""The Issue body: the customer's own words, then the form's own record.
 
-	The note is HTML-escaped before it is stored: `Issue.description` is a Text
+	The note is HTML-escaped before it is stored: Issue.description is a Text
 	Editor field that the Desk renders as HTML, so unescaped input would be a
 	stored-XSS path from the portal into a manager's browser.
+
+	The record line carries who reported it as well as what and how urgent, and it
+	is a small paragraph of its own so portal.reports can drop it when showing the
+	customer what they wrote - otherwise every detail page quotes the form's
+	bookkeeping back at them.
 	"""
 	parts = []
 	note = _text(note, DESCRIPTION_LIMIT)
 	if note:
-		parts.append("<p>{0}</p>".format(frappe.utils.escape_html(note).replace("\n", "<br>")))
-	parts.append(
-		"<p><small>{0}</small></p>".format(
-			frappe.utils.escape_html(
-				_("Reported from the customer portal - {0} / {1}").format(category_label, urgency_label)
-			)
-		)
-	)
-	return "".join(parts)
+		parts.append("<p>{0}</p>".format(frappe.utils.escape_html(note).replace(chr(10), "<br>")))
 
+	record = _("Reported from the customer portal - {0} / {1}").format(category_label, urgency_label)
+	reporter = _text(reporter, REPORTER_LIMIT)
+	if reporter:
+		record = "{0}: {1} - {2}".format(_("Customer"), reporter, record)
+	parts.append("<p><small>{0}</small></p>".format(frappe.utils.escape_html(record)))
+	return "".join(parts)
 
 def _resolve_store(user, store=None):
 	"""The (customer, name) a report belongs to, from the user's own links.
@@ -206,7 +214,7 @@ def _attach_photo(data_url, issue):
 
 
 @frappe.whitelist()
-def create_issue(category=None, urgency=None, description=None, attachment=None, store=None):
+def create_issue(category=None, urgency=None, description=None, attachment=None, store=None, reporter=None):
 	"""Create an Issue from the report form.
 
 	Returns the new ticket's name, subject, priority and resolved category so the
@@ -215,7 +223,20 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 	`store` is only consulted when the caller is linked to more than one store, and
 	even then it must name one of *their* stores - the form is never trusted to say
 	which station a report belongs to.
+
+	`reporter` is who actually filed it, chosen from that store's own manager list:
+	a station phone is shared, so it is not always the account holder. Both
+	`description` and `reporter` are required - the form blocks first, and this is
+	the second gate. See docs/17 section 14.
 	"""
+	# Both are required, and the form enforces it before posting (docs/17
+	# section 14); checked here too because a phone is not the only client.
+	note = _text(description, DESCRIPTION_LIMIT)
+	if not note.strip():
+		frappe.throw(_("Please say what is wrong."), frappe.ValidationError)
+	reporter = _text(reporter, REPORTER_LIMIT)
+	if not reporter.strip():
+		frappe.throw(_("Please choose your name."), frappe.ValidationError)
 	user = _session_user()
 
 	chosen_category = catalog.category(category) or catalog.default_category()
@@ -227,7 +248,7 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 	meta = frappe.get_meta(ISSUE)
 	doc = frappe.new_doc(ISSUE)
 	doc.subject = _subject(chosen_category["label"], station, person)
-	doc.description = _description_html(chosen_category["label"], chosen_urgency["label"], description)
+	doc.description = _description_html(chosen_category["label"], chosen_urgency["label"], note, reporter)
 	# `_safe_priority` answers None when the field's values are not available on
 	# this site, which is not the same as "set it to nothing".
 	priority = _safe_priority(chosen_urgency.get("priority"))
@@ -251,6 +272,7 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 		"priority": doc.get("priority"),
 		"category": chosen_category["label"],
 		"urgency": chosen_urgency["label"],
+		"reporter": reporter,
 		"customer": customer,
 		"store": customer,
 		"photo": _attach_photo(attachment, doc),

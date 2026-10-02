@@ -46,6 +46,23 @@
 		<h1 class="sl-form__title">{{ _("What is wrong?") }}</h1>
 		{% endif %}
 
+		{# Who is reporting. A station phone is shared, so this is not necessarily
+		   the account holder - the name chosen here travels with the report. The
+		   options follow the store buttons above; the script rebuilds them on a
+		   change, because a multi-store manager has one list per store. #}
+		<label class="sl-label sl-label--field" for="sl-customer">
+			<span class="sl-label__icon" aria-hidden="true">&#128100;</span>
+			<span>{{ _("Customer") }}</span>
+		</label>
+		<select class="sl-select" id="sl-customer" name="reporter"
+			required aria-required="true"
+			data-stores="{{ reporter_json|e }}"
+			data-fallback="{{ reporter_default|e }}">
+			{% for name in reporter_options %}
+			<option value="{{ name }}">{{ name }}</option>
+			{% endfor %}
+		</select>
+
 		<div class="sl-choices sl-choices--many" role="radiogroup" aria-label="{{ _('What is wrong?') }}">
 			{% for category in categories %}
 			<button type="button"
@@ -93,9 +110,10 @@
 			</figure>
 		</div>
 
-		<label class="sl-label" for="sl-description">{{ _("Say more (optional)") }}</label>
+		<label class="sl-label" for="sl-description">{{ _("Say more") }}</label>
 		<textarea class="sl-textarea" id="sl-description" name="description"
 			rows="3" maxlength="2000"
+			required aria-required="true"
 			placeholder="{{ _('Example: pump 3 is not working') }}"></textarea>
 
 		<button type="submit" class="sl-submit" id="sl-submit"

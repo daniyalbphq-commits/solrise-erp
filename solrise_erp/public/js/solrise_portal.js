@@ -77,6 +77,58 @@
 		});
 	}
 
+	function read_json(text) {
+		try {
+			return JSON.parse(text);
+		} catch (e) {
+			return null;
+		}
+	}
+
+	function wire_reporter() {
+		/* The Customer picker follows the store buttons: a manager who covers
+		   several sites has a different set of colleagues at each, and the server
+		   sends every list at once (data-stores) rather than a round trip per tap.
+		   Rebuilt in place, keeping the previous pick when it is still on offer, so
+		   the usual reporter does not have to choose again on every store change. */
+		var select = by_id("sl-customer");
+		if (!select) {
+			return;
+		}
+
+		var by_store = read_json(select.getAttribute("data-stores")) || {};
+		var fallback = select.getAttribute("data-fallback") || "";
+		var previous = select.value;
+
+		function fill(store) {
+			var names = by_store[store] || [];
+			if (!names.length && fallback) {
+				names = [fallback];
+			}
+			if (!names.length) {
+				return;
+			}
+			select.innerHTML = "";
+			for (var i = 0; i < names.length; i++) {
+				var option = document.createElement("option");
+				option.value = names[i];
+				option.textContent = names[i];
+				select.appendChild(option);
+			}
+			if (names.indexOf(previous) >= 0) {
+				select.value = previous;
+			} else {
+				previous = select.value;
+			}
+		}
+
+		each(document.querySelectorAll('[data-group="store"]'), function (button) {
+			button.addEventListener("click", function () {
+				fill(button.getAttribute("data-value"));
+			});
+		});
+	}
+
 	function value_of(id) {
 		var field = by_id(id);
 		return field && typeof field.value === "string" ? field.value : "";
@@ -302,10 +354,26 @@
 			event.preventDefault();
 			hide_alert();
 
+			/* The two required answers, checked here as well as on the server so
+			   a phone gets a sentence it can act on instead of an error page. */
+			var description = value_of("sl-description");
+			if (!description || !description.replace(/ /g, "").length) {
+				show_alert("Please say what is wrong.");
+				return;
+			}
+			var reporter = value_of("sl-customer");
+			if (!reporter) {
+				show_alert("Please choose your name.");
+				return;
+			}
+
 			var args = {
 				category: value_of("sl-category"),
 				urgency: value_of("sl-urgency"),
-				description: value_of("sl-description"),
+				description: description,
+				// Who filed it, from the store's own manager list. The server stores it
+				// with the report rather than trusting it as an identity.
+				reporter: reporter,
 				// Empty unless the user covers several stores, in which case the server
 				// checks it against their own stores rather than trusting it.
 				store: value_of("sl-store")
@@ -376,6 +444,7 @@
 	function on_ready() {
 		try {
 			rescue_stray_customer();
+			wire_reporter();
 			var form = by_id("sl-report");
 			if (!form) {
 				return;

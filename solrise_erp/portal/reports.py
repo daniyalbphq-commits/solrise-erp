@@ -31,6 +31,8 @@ body, the direction and the time survive - so a reply that happened to CC a
 vendor cannot leak that address onto a station phone.
 """
 
+import re
+
 import frappe
 from frappe.utils import pretty_date, strip_html_tags
 
@@ -69,6 +71,12 @@ MESSAGE_TYPES = ("Communication",)
 #: `sent_or_received` -> who it looks like to the customer.
 SENDER_ME = "You"
 SENDER_THEM = "Solrise"
+
+#: The form's own bookkeeping paragraph in `Issue.description` - the `<small>` one
+#: `api.portal._description_html()` appends. Stripped before a description is shown
+#: back to the customer, so their own words are not followed by "Customer: ...
+#: Reported from the customer portal - Refrigeration / Urgent".
+RECORD_RE = re.compile(r"<p>\s*<small>.*?</small>\s*</p>", re.IGNORECASE | re.DOTALL)
 
 
 def _log_error(title):
@@ -119,6 +127,14 @@ def _category(subject):
 	except Exception:
 		return None
 	return catalog.category_by_label(label)
+
+
+def _strip_record(html):
+	"""A description without the form's bookkeeping paragraph."""
+	try:
+		return RECORD_RE.sub(" ", str(html or ""))
+	except Exception:
+		return str(html or "")
 
 
 def _photo(issue_name):
@@ -316,13 +332,12 @@ def detail(user=None, name=None):
 	thread = _messages(name)
 
 	# The first message on a report is the report itself: the platform copies the
-	# customer's own words onto the ticket so the support team can see them. That
-	# text is the note - it is what they actually typed, where `description` is the
-	# portal's composed HTML - and leaving it in the thread would print it twice on
-	# one screen and make "Updates" mean "everything".
-	note = ""
+	# customer's words onto the ticket so the support team can see them. That text is
+	# the description, so dropping it from the thread keeps "Updates" meaning what
+	# Solrise sent, and the description becomes the note - minus the record line.
+	echo = ""
 	if thread and thread[0].get("mine"):
-		note = thread[0].get("text") or ""
+		echo = thread[0].get("text") or ""
 		thread = thread[1:]
 
 	return {
@@ -339,7 +354,7 @@ def detail(user=None, name=None):
 		"age": _age(issue.get("creation")),
 		"updated": issue.get("modified"),
 		"updated_age": _age(issue.get("modified")),
-		"note": note or _plain(issue.get("description"), limit=2000),
+		"note": _plain(_strip_record(issue.get("description")), limit=2000) or echo,
 		"resolution": _plain(issue.get("resolution_details"), limit=1000),
 		"photo": _photo(name),
 		"messages": thread,

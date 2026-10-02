@@ -342,6 +342,41 @@
 	border-color: var(--sl-accent);
 }
 
+/* ----------------------------------------------------------------- the picker */
+/* The one control on the form that is a real field rather than a set of buttons:
+   who is reporting. Weighted like the textarea, so it reads as one of the
+   answers rather than as chrome. The native chevron is left alone - it is what
+   the reader already knows from every other app on the phone. */
+
+.sl-label--field {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.sl-label__icon {
+	font-size: 1.25rem;
+	line-height: 1;
+}
+
+.sl-select {
+	width: 100%;
+	min-height: 3.75rem;
+	padding: 0.75rem 0.875rem;
+	font-size: 1.125rem;
+	font-family: inherit;
+	color: var(--sl-ink);
+	background-color: var(--sl-surface);
+	border: 2px solid var(--sl-line);
+	border-radius: 0.875rem;
+}
+
+.sl-select:focus-visible {
+	outline: 3px solid var(--sl-accent);
+	outline-offset: 2px;
+	border-color: var(--sl-accent);
+}
+
 /* ------------------------------------------------------------------- actions */
 
 .sl-submit {

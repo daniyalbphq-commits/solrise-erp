@@ -297,6 +297,77 @@ class ReportPageTest(unittest.TestCase):
 			self.assertIn(status, source, "{0} is not treated as finished".format(status))
 
 
+class ReportFormTest(unittest.TestCase):
+	"""The form every report travels through: the required note, the name picker.
+
+	Both are asked of a station employee, and both are the kind of thing that is
+	easy to *look* present and not be wired: a label that says required without a
+	check, or a select whose value nobody submits. So the assertions run from the
+	markup down to the payload.
+	"""
+
+	def test_say_more_is_required(self):
+		form = _read("www", "start", "report-issue", "index.html")
+		self.assertNotIn("(optional)", form, "the note is still labelled optional")
+		self.assertIn("required aria-required", form, "the note is not marked required")
+
+		# And the server refuses it too: a phone is not the only client that can
+		# post to a whitelisted method.
+		api = _read("api", "portal.py")
+		self.assertIn('frappe.throw(_("Please say what is wrong.")', api)
+		self.assertIn('frappe.throw(_("Please choose your name.")', api)
+
+	def test_the_customer_picker_is_wired_from_markup_to_payload(self):
+		form = _read("www", "start", "report-issue", "index.html")
+		self.assertIn('id="sl-customer"', form)
+		self.assertIn('name="reporter"', form)
+		# The per-store lists ride along as data, so changing store is not a round
+		# trip; the script rebuilds the select from this.
+		self.assertIn('data-stores="{{ reporter_json|e }}"', form)
+		self.assertIn("{% for name in reporter_options %}", form)
+
+		js = _read("public", "js", "solrise_portal.js")
+		self.assertIn("function wire_reporter", js)
+		self.assertIn("wire_reporter();", js, "the picker is never wired")
+		self.assertIn("reporter: reporter,", js, "the chosen name is not submitted")
+
+		api = _read("api", "portal.py")
+		self.assertIn("reporter=None", api, "create_issue does not accept a reporter")
+		self.assertIn('"reporter": reporter,', api, "the response omits the reporter")
+
+	def test_the_reporter_rides_with_the_note(self):
+		"""Filed with the report, in the record line - not as prose in the note.
+
+		Keeping it out of the note is what lets the portal show the customer their
+		own words without the form's bookkeeping - pinned from the other side by
+		`ReportFormTest.test_the_note_has_the_record_line_stripped`.
+		"""
+		api = _read("api", "portal.py")
+		self.assertIn('note, reporter=""', api, "the composer does not take the reporter")
+		self.assertIn('_("Customer"), reporter', api)
+		self.assertIn("<p><small>", api, "the record line is no longer its own paragraph")
+
+	def test_the_note_has_the_record_line_stripped(self):
+		source = _read("portal", "reports.py")
+		self.assertIn("RECORD_RE = re.compile", source)
+		self.assertIn("def _strip_record(", source)
+		self.assertIn('_strip_record(issue.get("description"))', source)
+
+	def test_the_picker_names_come_from_the_linked_contacts(self):
+		"""The list is the store's own contacts, not a second copy of the sheet.
+
+		The sheet writes names both "Last, First" and "First Last", and its commas
+		are the surname separator rather than a list of people - so re-parsing it
+		here would be a way to invent colleagues.
+		"""
+		source = _read("portal", "identity.py")
+		self.assertIn("def managers(", source)
+		self.assertIn('"link_doctype": "Customer"', source)
+		self.assertIn("first_name", source)
+		form = _read("www", "start", "report-issue", "index.py")
+		self.assertIn("identity.managers(", form)
+
+
 class HookWiringTest(unittest.TestCase):
 	"""The wiring that makes the portal reachable at all."""
 
