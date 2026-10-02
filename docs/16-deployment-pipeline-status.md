@@ -58,7 +58,7 @@ There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 | Image source | Docker Hub `docker.io/daniyalbphq/solrise:version-15` (**private repo**); ECR is unused (`ecr_repository_url` is empty) |
 | Apps in the image | `erpnext`, `hrms`, `solrise_erp` (from `${SOLRISE_APP_URL}`), `cloud_storage` - baked by CI from `apps.json`. Until 2026-09-16 the Solrise app was missing here, so the image carried no branding and no chat |
 | Apps on the site | `INSTALL_APPS` from the rendered `.env` (`install_apps` + `solrise_erp` + `cloud_storage` when those features are on); `scripts/create-site.sh` installs any that the site is missing |
-| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository (now `c4da9b5`, the revision in `.build/app-rev`), baked in by CI and installed by `scripts/create-site.sh`. The customer portal, the store master data and the mail account shipped on 2026-10-01; the required note + customer picker on 2026-10-02. See [§5.5](#55-the-app-layer-deployed-2026-09-17), [§5.6](#56-the-customer-portal-and-the-store-data-deployed-2026-10-01) and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) |
+| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository (now `ea7333d`, the revision in `.build/app-rev`), baked in by CI and installed by `scripts/create-site.sh`. The customer portal, the store master data and the mail account shipped on 2026-10-01; the required note + customer picker on 2026-10-02. See [§5.5](#55-the-app-layer-deployed-2026-09-17), [§5.6](#56-the-customer-portal-and-the-store-data-deployed-2026-10-01), [§5.7](#57-the-reporter-default-and-the-cache-bust-deployed-2026-10-02) and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) |
 | Boot / backup | `/home/ubuntu/.config/systemd/user/solrise.service` (`enabled`, `active`) and `/etc/cron.d/solrise-backup` (nightly `02:15`) - installed and proved on 2026-10-01, §6 item 2 |
 | Repo / remote | `git@github.com:daniyalbphq-commits/solrise-erp.git` (remote `origin`). `core.sshCommand` pins `~/.ssh/id_ed25519_bphq`, which authenticates as `daniyalbphq-commits`; the default key authenticates as `DaniyalM`, who can read the (public) repo but is refused write: `Permission ... denied to DaniyalM` |
 | Repo on the host | `/opt/solrise-erp` (cloned by the Ansible role, so it carries the dirty file modes the role's chmod task causes) |
@@ -449,6 +449,35 @@ actually running the thing, and all three are recorded in §7:
 2. the boot unit could not start the stack at all;
 3. with the wrong `podman-compose`, the unit then looped the `init`-only
    `create-site` service forever.
+
+### 5.7 The reporter default and the cache-bust, deployed (2026-10-02)
+
+Two live bugs from the same afternoon, both fixed by the 2026-10-02 image (app
+branch `ea7333d`, image `442e154f000f`):
+
+* **"Please choose your name." on every submit, from a form that looked right.**
+  The page HTML was new - the Customer picker was rendered and served - but the
+  browser was running the *previous* `solrise_portal.js`, which never sent
+  `reporter`. The stack trace proved it: its line numbers (`frappe.call` at 198,
+  the submit at 320) are the old revision's. `/assets/solrise_erp/**` is served
+  with an `ETag` and no `Cache-Control`, so Chrome kept the old script. Two
+  changes: `hooks.py` stamps every asset URL `?v=<mtime>` (nginx ignores the
+  query), and `create_issue` now **defaults** the reporter to the picker's top
+  option (`_reporter_default`) instead of refusing, so a stale client cannot lose
+  a report. See section 7 and docs/17 section 14.
+* **`inter.css` 404 (MIME type `text/html`) on every website page.** The custom
+  `Modern Minimalist` theme's compiled CSS carries a literal
+  `@import "frappe/public/css/fonts/inter/inter.css"` - Frappe's
+  `website/index.scss` imports `inter.scss`, and Sass leaves `.css` imports
+  literal - which the browser resolves relative to `/files/website_theme/`.
+  Frappe's `inter.css` was placed at that path; its font URLs are absolute, so
+  the fonts themselves were never affected. The theme is site-local (no
+  `Website Theme` fixture ships in this repo), so a fresh site does not have it.
+
+Verified after the rollout: `make verify` OK; `make verify-portal` OK, including
+the new `a missing name defaults to the picker's top option` check; the served
+page carries `solrise_portal.js?v=1790968635`; `/files/website_theme/.../inter.css`
+serves `200 text/css`; `ping` is `200`.
 
 ## 6. Open items
 
