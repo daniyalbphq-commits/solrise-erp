@@ -4,12 +4,11 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-10-01. The vault is repaired, the customer portal shipped and
-then had to be fixed (docs/17 section 4.1), the store master data and 26 store
-logins are live, mail is configured, and the boot unit and nightly backup are
-installed and proved (§6 item 2 is closed). What is left is the operator's: the
-LLM provider key (§6 item 10), rotating the store password (§6 item 14), and
-deploying the app revision recorded in `.build/app-rev`.
+Last updated: 2026-10-02. The live site was re-verified green on 2026-10-02 (branding,
+app layer, chat, portal - `make verify`, `make verify-chat`, `make verify-portal`);
+the white-label requirement is fully deployed. The one functional gap left is the
+operator's LLM key (§6 item 10), which now has a supported one-command path
+(`make assistant`). Also open: rotating the store password (§6 item 14).
 
 ---
 
@@ -59,7 +58,7 @@ There is deliberately no CD workflow yet (see [Open items](#6-open-items)).
 | Image source | Docker Hub `docker.io/daniyalbphq/solrise:version-15` (**private repo**); ECR is unused (`ecr_repository_url` is empty) |
 | Apps in the image | `erpnext`, `hrms`, `solrise_erp` (from `${SOLRISE_APP_URL}`), `cloud_storage` - baked by CI from `apps.json`. Until 2026-09-16 the Solrise app was missing here, so the image carried no branding and no chat |
 | Apps on the site | `INSTALL_APPS` from the rendered `.env` (`install_apps` + `solrise_erp` + `cloud_storage` when those features are on); `scripts/create-site.sh` installs any that the site is missing |
-| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository (now `5e0edb8`), baked in by CI and installed by `scripts/create-site.sh`. The customer portal, the store master data and the mail account shipped on 2026-10-01. See [§5.5](#55-the-app-layer-deployed-2026-09-17), [§5.6](#56-the-customer-portal-and-the-store-data-deployed-2026-10-01) and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) |
+| Application layer today | The app itself: `solrise_app_enabled: true`, published on the `solrise_erp-app` branch of this repository (now `c4da9b5`, the revision in `.build/app-rev`), baked in by CI and installed by `scripts/create-site.sh`. The customer portal, the store master data and the mail account shipped on 2026-10-01; the required note + customer picker on 2026-10-02. See [§5.5](#55-the-app-layer-deployed-2026-09-17), [§5.6](#56-the-customer-portal-and-the-store-data-deployed-2026-10-01) and [§5.4](#54-the-app-less-interim-2026-09-16-superseded) |
 | Boot / backup | `/home/ubuntu/.config/systemd/user/solrise.service` (`enabled`, `active`) and `/etc/cron.d/solrise-backup` (nightly `02:15`) - installed and proved on 2026-10-01, §6 item 2 |
 | Repo / remote | `git@github.com:daniyalbphq-commits/solrise-erp.git` (remote `origin`). `core.sshCommand` pins `~/.ssh/id_ed25519_bphq`, which authenticates as `daniyalbphq-commits`; the default key authenticates as `DaniyalM`, who can read the (public) repo but is refused write: `Permission ... denied to DaniyalM` |
 | Repo on the host | `/opt/solrise-erp` (cloned by the Ansible role, so it carries the dirty file modes the role's chmod task causes) |
@@ -267,8 +266,11 @@ These are the operator's, and they are the difference between "installed" and
 
 * **The assistant's provider and key** - `Solrise Settings` (`enabled`, `provider`,
   `api_base_url`, `api_key`, `model`, `rate_limit_per_hour`). Until that is set,
-  "Ask Solrise" and the chat's optional LLM slot-filler answer nothing.
-  Programmatic form: `docs/06-phase4-assistant.md` section 4.2.
+  "Ask Solrise" and the chat's optional LLM slot-filler answer nothing. Apply it
+  with a command rather than the UI:
+  `ASSISTANT_API_KEY='sk-...' SITE_ENV=aws make assistant`
+  (`scripts/configure_assistant.py` - it writes only what changed, then sends one
+  real message so a bad key fails loudly; docs/06 section 4.2).
 * **A messaging channel** for SMS/WhatsApp - `Solrise Notification Channel`
   (`docs/07-phase4-notifications-reporting.md` section 7.2).
 * **The guardrail switches** - `allow_record_lookup` / `allow_ticket_creation` /
@@ -529,6 +531,13 @@ actually running the thing, and all three are recorded in §7:
     creation, lookups, approvals and the audit trail are all live. A messaging
     channel is likewise absent. Both are business decisions, and both are the
     difference between *installed* and *usable*.
+
+    The *tooling* half of this is closed: `scripts/configure_assistant.py`
+    (`make assistant`) configures the provider, key, model and system prompt
+    idempotently from `ASSISTANT_*` and probes the provider, so the remaining
+    work is one command with a key - not a console snippet. What is still the
+    operator's is the decision and the secret: which provider, and the key. The
+    other half is business, not code - the system prompt and FAQ answers.
 11. **The verification scripts have all now run against a live host** (`make verify`,
     `make verify-chat`, `make verify-portal`) - see §5.5 and §5.6 for what they
     reported. Keep them in step with section 5.1: a new requirement needs a check
@@ -665,3 +674,18 @@ actually running the thing, and all three are recorded in §7:
   `install_apps`/`solrise_app_enabled`, and `scripts/verify_app_layer.py`) and why
   the CI build refuses to run without the app remote rather than quietly shipping
   a smaller product.
+* **A cached app asset outlives the deploy it shipped in, and the mismatch looks
+  like a bug in the new code.** `/assets/solrise_erp/**` is served with an `ETag`
+  and `Last-Modified` and **no `Cache-Control`**, and the filename never changes,
+  so a browser that loaded the page before a deploy keeps the old script (Chrome
+  caches heuristically, ~10% of the file's age). The reporter picker made this
+  visible: the page HTML is `no_cache` and was new, the script was stale, so the
+  form posted without `reporter` and *every* submit raised "Please choose your
+  name." The deployment was correct the whole time - and the stack trace proved
+  it, because its line numbers (`frappe.call` at 198, the submit at 320) are the
+  *previous* revision's. Two halves to the fix: `hooks.py` now stamps every asset
+  URL `?v=<mtime>`, so a rebuild changes the URL (nginx ignores the query), and an
+  already-open tab needs a hard reload. If a page misbehaves right after a deploy,
+  compare the served bytes with the container's file before touching the code:
+  `curl -s <site>/assets/solrise_erp/js/solrise_portal.js | wc -c` against
+  `podman exec solrise_backend_1 wc -c /home/frappe/frappe-bench/apps/solrise_erp/solrise_erp/public/js/solrise_portal.js`.

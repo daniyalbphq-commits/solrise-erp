@@ -231,14 +231,16 @@ def check_app_entry_points():
 def check_widget_assets():
     """A widget is only live if the browser can fetch it and Frappe includes it."""
     print("widget assets:")
-    widget = "/assets/solrise_erp/js/solrise_chat.js"
+    widget = "assets/solrise_erp/js/solrise_chat.js"
     for hook in ("app_include_js", "web_include_js"):
         try:
             paths = list(frappe.get_hooks(hook) or [])
         except Exception as exc:  # noqa: BLE001
             fail(f"{hook} readable", f"{type(exc).__name__}: {exc}")
             continue
-        check(f"{hook} includes the widget", widget in paths, f"{paths}")
+        # Each URL carries a `?v=<mtime>` cache-bust stamp (hooks.py), so match on
+        # the path, not the whole string.
+        check(f"{hook} includes the widget", any(widget in p for p in paths), f"{paths}")
 
     for path in (
         "assets/solrise_erp/js/solrise_chat.js",

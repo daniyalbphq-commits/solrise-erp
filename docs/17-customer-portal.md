@@ -610,7 +610,8 @@ person wrote to you.
 
 ## 14. What the report form asks for
 
-Two fields, and both are required: **say more about it**, and **say who you are**.
+Two fields: **say more about it**, which is required, and **say who you are**,
+which the form asks and defaults but the server will not let block a report.
 
 ### 14.1 "Say more" is no longer optional
 
@@ -642,6 +643,16 @@ the script rebuilds the `<select>` when the store buttons change, keeping the
 previous pick when it is still on offer. It defaults to the account holder, who is
 the usual reporter. A store whose contact is missing falls back to that name too,
 so the picker is never empty.
+
+**Asked, not enforced.** The picker's top option is the default, and the script
+refuses to post an empty one with a sentence the user can act on — but
+`create_issue` does **not** refuse it. When the name is missing — an older cached
+script, or a request made by hand — the server files the picker's top option,
+which is the store's first manager (`_reporter_default`, the same
+`identity.managers` order the page renders). A missing name must never cost a
+customer their report: the report is worth more than the attribution, and the
+Support Manager can see and correct it. The `ValidationError` remains only for a
+caller with no name to fall back to at all.
 
 ### 14.3 What happens to it
 

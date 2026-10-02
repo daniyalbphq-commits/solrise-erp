@@ -360,30 +360,28 @@ def _portal_user_with_a_report():
 
 
 def check_report_form():
-    """The form's two required answers, and where the name list comes from.
+    """The form's required note, and where the name list comes from.
 
-    Read-only: both refusals throw before anything is written, so this never
-    leaves a report behind (docs/17 section 14).
+    Read-only: the refusal throws before anything is written, and the name check
+    calls the default resolver directly instead of posting, so this never leaves
+    a report behind (docs/17 section 14).
     """
     print("report form:")
     from solrise_erp.api import portal as api
     from solrise_erp.portal import identity
 
-    refusals = (
-        ("an empty note", {"description": "   ", "reporter": "Someone"}, "say what is wrong"),
-        ("a missing name", {"description": "the pump is dead", "reporter": "  "}, "choose your name"),
-    )
-    for label, payload, expected in refusals:
-        payload = dict(payload, category="other", urgency="normal")
-        try:
-            api.create_issue(**payload)
-            fail(f"{label} is refused", "it was accepted")
-        except frappe.ValidationError as exc:
-            # The message matters: a missing store would also raise here, and would
-            # pass a check that only asked whether *something* was raised.
-            check(f"{label} is refused", expected in str(exc), str(exc)[:70])
-        except Exception as exc:  # noqa: BLE001
-            fail(f"{label} is refused", f"{type(exc).__name__}: {exc}")
+    # The note is a hard refusal. The name is not: a missing name falls back to
+    # the picker's top option, so an older cached form cannot lose a report.
+    payload = {"description": "   ", "reporter": "Someone", "category": "other", "urgency": "normal"}
+    try:
+        api.create_issue(**payload)
+        fail("an empty note is refused", "it was accepted")
+    except frappe.ValidationError as exc:
+        # The message matters: a missing store would also raise here, and would
+        # pass a check that only asked whether *something* was raised.
+        check("an empty note is refused", "say what is wrong" in str(exc), str(exc)[:70])
+    except Exception as exc:  # noqa: BLE001
+        fail("an empty note is refused", f"{type(exc).__name__}: {exc}")
 
     sample = _portal_user_with_a_report() or _sample_customer_user()
     stores = identity.stores(user=sample) if sample else []
@@ -395,6 +393,12 @@ def check_report_form():
         f"the picker has names for {stores[0]['customer_name']}",
         bool(names),
         f"{names}",
+    )
+    fallback = api._reporter_default(stores[0]["customer"], "Nobody At All")
+    check(
+        "a missing name defaults to the picker's top option",
+        bool(names) and fallback == names[0],
+        f"{fallback!r} vs {names[:1]}",
     )
 
 

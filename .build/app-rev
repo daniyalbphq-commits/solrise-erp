@@ -16,7 +16,18 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                c4da9b51e04831cecaa5f6f9e22e702a9578bcaa
+solrise_erp-app                                ea7333d553623a127c1efe656d6883aaf47af5cc
+
+# 2026-10-02  A missing name no longer loses a report. The Customer picker's top
+#             option is the default, and when a client sends no name - an older
+#             cached script, or a request made by hand - create_issue files that
+#             top option (the store's first manager) instead of throwing "Please
+#             choose your name." (_reporter_default; the ValidationError stays
+#             only for a caller with no name to fall back to at all). App asset
+#             URLs also carry a `?v=<mtime>` stamp now: a cached script outlived
+#             the deploy and posts reached a server expecting a field the old
+#             script never sent. docs/16 section 7, docs/17 section 14.
+#
 
 # 2026-10-01  The report form asks two required things now: "Say more" is no
 #             longer optional, and a "Customer" picker lists the manager names on

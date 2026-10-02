@@ -88,6 +88,24 @@ doc.system_prompt = ("You are the Solrise ERP assistant. Only use the provided "
 doc.save(ignore_permissions=True)
 ```
 
+The same thing from the command line, without pasting into the console - this is
+the supported path for a deploy, and the one to use over SSH/SSM:
+
+```bash
+# workstation, or on the host from /opt/solrise-erp
+ASSISTANT_API_KEY='sk-...' SITE_ENV=aws make assistant
+```
+
+`scripts/configure_assistant.py` (`make assistant`) reads `ASSISTANT_*` from the
+environment (forwarded by `scripts/run-python.sh`), writes only the fields that
+changed, and then sends one real message so a bad key or an unreachable endpoint
+fails loudly instead of at the first user question. `ASSISTANT_ENABLED=auto`
+(the default) turns the assistant on when a key is present, or when the provider
+needs none (Ollama). The key is stored encrypted and never appears in the output.
+Set `ASSISTANT_PROBE=0` to configure offline, and `ASSISTANT_CHAT_FALLBACK=1` to
+also let the universal chat's slot-filler use the model (`chat/` -
+`docs/12-phase5-universal-chat-entry-flow.md`).
+
 Provider quick reference:
 
 | Provider | `api_base_url` | Notes |
