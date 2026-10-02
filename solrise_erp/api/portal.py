@@ -213,6 +213,19 @@ def _attach_photo(data_url, issue):
 		return None
 
 
+def _reporter_default(customer, person):
+	"""The picker's top option: the store's first manager, else the account holder.
+
+	The report form selects this by default, so a client that sends no name - an
+	older cached script, or a request made by hand - still files a report instead
+	of being refused. `identity.managers` puts the logged-in user first, so the
+	default is usually the account holder. Returns "" only when there is no name to
+	file at all, which `create_issue` turns back into a refusal.
+	"""
+	names = identity.managers(customer) or [person]
+	return _text(names[0] if names else "", REPORTER_LIMIT)
+
+
 @frappe.whitelist()
 def create_issue(category=None, urgency=None, description=None, attachment=None, store=None, reporter=None):
 	"""Create an Issue from the report form.
@@ -225,18 +238,16 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 	which station a report belongs to.
 
 	`reporter` is who actually filed it, chosen from that store's own manager list:
-	a station phone is shared, so it is not always the account holder. Both
-	`description` and `reporter` are required - the form blocks first, and this is
-	the second gate. See docs/17 section 14.
+	a station phone is shared, so it is not always the account holder. It is not
+	*required*: when it is missing the picker's top option is filed instead, so a
+	stale client cannot lose a report over it. `description` **is** required, and
+	this is the second gate after the form. See docs/17 section 14.
 	"""
-	# Both are required, and the form enforces it before posting (docs/17
+	# The note is required, and the form enforces it before posting (docs/17
 	# section 14); checked here too because a phone is not the only client.
 	note = _text(description, DESCRIPTION_LIMIT)
 	if not note.strip():
 		frappe.throw(_("Please say what is wrong."), frappe.ValidationError)
-	reporter = _text(reporter, REPORTER_LIMIT)
-	if not reporter.strip():
-		frappe.throw(_("Please choose your name."), frappe.ValidationError)
 	user = _session_user()
 
 	chosen_category = catalog.category(category) or catalog.default_category()
@@ -244,6 +255,13 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 
 	customer, station = _resolve_store(user, store)
 	person = identity.display_name(user)
+
+	# Who filed it. The form sends the chosen name; when it does not, the top
+	# option of the picker is the default rather than a refusal - a missing name
+	# must never cost a customer their report.
+	reporter = _text(reporter, REPORTER_LIMIT) or _reporter_default(customer, person)
+	if not reporter:
+		frappe.throw(_("Please choose your name."), frappe.ValidationError)
 
 	meta = frappe.get_meta(ISSUE)
 	doc = frappe.new_doc(ISSUE)

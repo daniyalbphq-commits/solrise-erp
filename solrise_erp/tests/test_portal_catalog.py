@@ -317,6 +317,24 @@ class ReportFormTest(unittest.TestCase):
 		self.assertIn('frappe.throw(_("Please say what is wrong.")', api)
 		self.assertIn('frappe.throw(_("Please choose your name.")', api)
 
+	def test_a_missing_name_falls_back_to_the_top_option(self):
+		"""A stale picker must not cost a report.
+
+		The form sends the chosen name; when it does not - an older cached script, or
+		a request made by hand - the server files the picker's top option (the store's
+		first manager) instead of refusing. Pinned structurally because the resolver
+		needs a database; `docs/17` section 14 has the reasoning.
+		"""
+		api = _read("api", "portal.py")
+		self.assertIn("def _reporter_default(", api, "the name default resolver is gone")
+		self.assertIn(
+			"or _reporter_default(customer, person)",
+			api,
+			"create_issue does not fall back to the picker's top option",
+		)
+		# The refusal stays as the last resort, for a caller with no name at all.
+		self.assertIn('frappe.throw(_("Please choose your name.")', api)
+
 	def test_the_customer_picker_is_wired_from_markup_to_payload(self):
 		form = _read("www", "start", "report-issue", "index.html")
 		self.assertIn('id="sl-customer"', form)
@@ -394,12 +412,34 @@ class HookWiringTest(unittest.TestCase):
 
 	def test_portal_assets_exist_and_are_declared(self):
 		hooks = _read("hooks.py")
-		for relative, needle in (
-			(("public", "css", "solrise_portal.css"), "/assets/solrise_erp/css/solrise_portal.css"),
-			(("public", "js", "solrise_portal.js"), "/assets/solrise_erp/js/solrise_portal.js"),
+		for relative, declared in (
+			(("public", "css", "solrise_portal.css"), "css/solrise_portal.css"),
+			(("public", "js", "solrise_portal.js"), "js/solrise_portal.js"),
 		):
 			self.assertTrue(os.path.isfile(os.path.join(_app_dir(), *relative)), os.path.join(*relative))
-			self.assertIn(needle, hooks, "{0} is not declared in hooks.py".format(needle))
+			self.assertIn(
+				'_asset_url("{0}")'.format(declared),
+				hooks,
+				"{0} is not declared in hooks.py".format(declared),
+			)
+
+	def test_asset_urls_are_cache_busted(self):
+		"""Every asset URL carries a `?v=` stamp.
+
+		Without it a browser keeps the copy it cached across a deploy, and a stale
+		form then posts to a server that expects fields the old script never sent -
+		which is exactly how the reporter picker broke (docs/16 section 7).
+		"""
+		hooks = _read("hooks.py")
+		self.assertIn("def _asset_url(", hooks, "the cache-bust helper is gone")
+		self.assertIn('?v={1}', hooks, "the cache-bust stamp is gone")
+		for relative in (
+			"js/solrise_erp.js",
+			"js/solrise_chat.js",
+			"js/solrise_portal.js",
+			"css/solrise_portal.css",
+		):
+			self.assertIn('_asset_url("{0}")'.format(relative), hooks, relative)
 
 	def test_a_stray_customer_is_sent_back_to_the_portal(self):
 		"""A station login refused at /app must be offered a way back.

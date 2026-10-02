@@ -28,21 +28,38 @@ after_install = "solrise_erp.install.after_install"
 after_migrate = "solrise_erp.install.after_migrate"
 
 # --- assets ----------------------------------------------------------------------
+# Every asset URL carries a `?v=<mtime>` stamp. Without it the browser keeps the
+# copy it cached, because `/assets/*` is served with an ETag and no `Cache-Control`
+# and the filename never changes. That is not cosmetic: the customer picker (the
+# `reporter` field) reached the server before the browser's old solrise_portal.js
+# did, so a stale no longer matched the form and every submit failed validation.
+# The stamp is the file's mtime as baked into the image, so a rebuild invalidates
+# it; nginx ignores the query string.
+def _asset_url(relative):
+	import os
+
+	try:
+		stamp = int(os.path.getmtime(os.path.join(os.path.dirname(__file__), "public", relative)))
+	except OSError:
+		stamp = 0
+	return "/assets/solrise_erp/{0}?v={1}".format(relative, stamp)
+
+
 # solrise_chat.js is the shared Desk + Portal widget; solrise_erp.js is the small
 # boot patch that keeps the upstream product name out of the Desk. Portal needs
 # web_include_js - app_include_js does not load there (docs/12 section 0, item 3).
 app_include_js = [
-    "/assets/solrise_erp/js/solrise_erp.js",
-    "/assets/solrise_erp/js/solrise_chat.js",
+	_asset_url("js/solrise_erp.js"),
+	_asset_url("js/solrise_chat.js"),
 ]
 # The portal CSS and JS ride along on every website page. Every rule and handler
 # is namespaced (`.sl-`, `#sl-report`), so they are inert everywhere else, and
 # the script returns immediately when the page has no report form (docs/17).
 web_include_js = [
-    "/assets/solrise_erp/js/solrise_chat.js",
-    "/assets/solrise_erp/js/solrise_portal.js",
+	_asset_url("js/solrise_chat.js"),
+	_asset_url("js/solrise_portal.js"),
 ]
-web_include_css = ["/assets/solrise_erp/css/solrise_portal.css"]
+web_include_css = [_asset_url("css/solrise_portal.css")]
 
 # --- boot ------------------------------------------------------------------------
 # Rewrites the app title/logo the platform attaches after boot_session (docs/10).
