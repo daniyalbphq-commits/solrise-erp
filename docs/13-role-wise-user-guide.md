@@ -501,8 +501,13 @@ flowchart TD
    **Your reports**: the ones still open, each showing an icon and a colour for
    its state, and the words "There is an update" when the support team has written
    to you.
-2. **Report a problem**: tap the picture that matches, say whether it is urgent,
-   add a photo if you can, and press **Send**.
+2. **Report a problem**: tap the picture that matches, then
+   * **Customer** - open the list and tap your name. It starts on the name the
+     station phone is registered to, so change it if somebody else is reporting;
+   * **Is it urgent?**, a photo if you can, and
+   * **Say more** - say what is actually wrong. This one is required: the report
+     cannot be sent without it.
+   Press **Send**.
 3. **Tap one of your reports** to read its updates - what you reported, and every
    message Solrise has sent you about it. The biggest thing on that screen is the
    state: *Waiting*, *In progress*, *On hold* or *Fixed*.

@@ -16,7 +16,15 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                9394ed477d0f94476c09b499b9b4439cc4a264ef
+solrise_erp-app                                c4da9b51e04831cecaa5f6f9e22e702a9578bcaa
+
+# 2026-10-01  The report form asks two required things now: "Say more" is no
+#             longer optional, and a "Customer" picker lists the manager names on
+#             record for the store (the linked Contacts - the sheet's commas are
+#             the "Last, First" separator, not two people). The chosen name is
+#             filed in the description's record line, which reports.py strips
+#             before showing the customer their own words. docs/17 section 14.
+#
 
 # 2026-10-01  The report's own echo is no longer treated as an update. Every
 #             report carries a Received copy of what the customer typed, so

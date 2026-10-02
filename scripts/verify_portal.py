@@ -359,6 +359,45 @@ def _portal_user_with_a_report():
     return None
 
 
+def check_report_form():
+    """The form's two required answers, and where the name list comes from.
+
+    Read-only: both refusals throw before anything is written, so this never
+    leaves a report behind (docs/17 section 14).
+    """
+    print("report form:")
+    from solrise_erp.api import portal as api
+    from solrise_erp.portal import identity
+
+    refusals = (
+        ("an empty note", {"description": "   ", "reporter": "Someone"}, "say what is wrong"),
+        ("a missing name", {"description": "the pump is dead", "reporter": "  "}, "choose your name"),
+    )
+    for label, payload, expected in refusals:
+        payload = dict(payload, category="other", urgency="normal")
+        try:
+            api.create_issue(**payload)
+            fail(f"{label} is refused", "it was accepted")
+        except frappe.ValidationError as exc:
+            # The message matters: a missing store would also raise here, and would
+            # pass a check that only asked whether *something* was raised.
+            check(f"{label} is refused", expected in str(exc), str(exc)[:70])
+        except Exception as exc:  # noqa: BLE001
+            fail(f"{label} is refused", f"{type(exc).__name__}: {exc}")
+
+    sample = _portal_user_with_a_report() or _sample_customer_user()
+    stores = identity.stores(user=sample) if sample else []
+    if not stores:
+        warn("no store to list manager names for", "see docs/18 section 5")
+        return
+    names = identity.managers(stores[0]["customer"])
+    check(
+        f"the picker has names for {stores[0]['customer_name']}",
+        bool(names),
+        f"{names}",
+    )
+
+
 def _owned_by(issue_name, user):
     """True when `issue_name` belongs to `user`, read without permissions."""
     try:
@@ -417,6 +456,8 @@ def main():
         check_portal_api()
         print()
         check_my_reports()
+        print()
+        check_report_form()
         print()
         check_support_routing()
     finally:

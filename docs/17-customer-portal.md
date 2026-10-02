@@ -607,3 +607,55 @@ person wrote to you.
   why the row says "There is an update" rather than showing a count of unread
   things nobody would maintain.
 * **No attachments on our replies.** Only the customer's own photo is shown.
+
+## 14. What the report form asks for
+
+Two fields, and both are required: **say more about it**, and **say who you are**.
+
+### 14.1 "Say more" is no longer optional
+
+The note used to be optional and is now the only thing that says what is actually
+wrong — the category is a picture with a label. Enforced twice: the script refuses
+to post with a sentence the reader can act on, and `create_issue` throws
+`ValidationError` for a phone (or anything else) that posts anyway. The form's
+own `novalidate` stays: the browser's native bubble is worse for this reader than
+one large line of text.
+
+### 14.2 The "Customer" picker
+
+A station phone is shared, so the login is not necessarily the person reporting.
+The picker lists the **manager names on record for that store**, so whoever is
+holding the phone says who they are.
+
+**Where the names come from.** The Contacts the importer linked to the Customer
+(`docs/18` section 4) — not a second parse of the sheet. That matters more than it
+sounds: the sheet writes some names `"Van Dam, Brett"` and others
+`"Tammy Hoeppner"`, so its commas separate surname from forename. **There is no
+cell in it with two people in it** — every store has exactly one manager — so
+splitting on commas would have produced a dropdown full of `"Van Dam"` and
+`"Brett"`. Reading the Contacts also means the list is already normalised, and any
+store that gains a second manager gets both without a code change.
+
+**Per store, without a round trip.** A manager who covers four sites has a
+different list at each, so the server sends every list at once in `data-stores` and
+the script rebuilds the `<select>` when the store buttons change, keeping the
+previous pick when it is still on offer. It defaults to the account holder, who is
+the usual reporter. A store whose contact is missing falls back to that name too,
+so the picker is never empty.
+
+### 14.3 What happens to it
+
+The chosen name is **filed with the report, not trusted as an identity**: it
+cannot change who owns the Issue or which store it belongs to. It goes into the
+description's `<small>` record line —
+`Customer: Tammy Hoeppner - Reported from the customer portal - Refrigeration / Urgent`
+— which is the same line the form already used for its bookkeeping, so the note
+stays the first paragraph.
+
+That matters because the customer reads their own report back (section 13), and
+they should not be shown the form's paperwork. `portal/reports.py` strips that
+paragraph (`RECORD_RE`) before displaying a note, which is also what keeps the
+name out of it.
+
+> Adding a *new* person to a store is a data change, not a code change: add the
+> Contact and link it to the Customer. See `docs/18` §4.
