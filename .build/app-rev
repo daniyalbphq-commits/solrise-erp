@@ -24,6 +24,8 @@ solrise_erp-app                                a88442f4dac2262eb4f37597a7909a7d9
 #             None" with no link, and `_collect_breached_issues` deduplicated on
 #             None, so SLA breach alerts never sent at all. `verify_app_layer.py`
 #             now gates it. docs/19 section 6.
+#             (Build run 17 failed in the frappe_docker image build, not in the
+#             app - `tasks.py` was the only file that changed. Retriggered.)
 #
 
 # 2026-10-02  A missing name no longer loses a report. The Customer picker's top
