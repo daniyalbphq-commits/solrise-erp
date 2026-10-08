@@ -3,7 +3,7 @@
   "attach_files": "",
   "attach_print": 0,
   "channel": "Email",
-  "condition": null,
+  "condition": "not doc.solrise_department",
   "date_changed": null,
   "days_in_advance": 0,
   "docstatus": 0,

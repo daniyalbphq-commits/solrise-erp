@@ -16,7 +16,19 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                a88442f4dac2262eb4f37597a7909a7d930175d6
+solrise_erp-app                                fe48008782f79a2cfd88e2ea30cff4ba0927ba6b
+
+# 2026-10-08  Departments: Maintenance, HR and IT / Support. The home page has one
+#             tile per desk; all three open the report form with that desk's
+#             buttons. `create_issue` stamps the desk on the Issue
+#             (`solrise_department`, a Custom Field), assigns it to the desk's
+#             people and emails them. The shared Assignment Rule and the
+#             `Solrise New Ticket` notification now skip a report that has a
+#             desk, so an HR report is never handed to - or emailed to - the
+#             maintenance rotation; the SLA/stale alerts do the same. HR goes to
+#             daniyal@solrise.com, Maintenance and IT to umair.nawaz@.
+#             docs/17 section 15. The HR and IT button lists are starting sets.
+#
 
 # 2026-10-08  Support alerts now name the ticket. `tasks._issue_fields()` filtered
 #             Issue fields through `meta.has_field()`, and `name` is a virtual

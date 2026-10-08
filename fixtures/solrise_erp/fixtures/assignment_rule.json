@@ -1,6 +1,6 @@
 [
  {
-  "assign_condition": "status == 'Open'",
+  "assign_condition": "status == 'Open' and not solrise_department",
   "assignment_days": [
    {
     "day": "Monday",

@@ -444,6 +444,56 @@ def check_support_routing():
         check("every Support Manager is routed to", not missing, f"missing: {missing}")
 
 
+def check_departments():
+    """Each desk: its buttons, its people, and the guards that keep them apart.
+
+    The failure this exists for is silent: an HR report that is also handed to the
+    maintenance rotation, or emailed to the support inbox, looks fine on the
+    customer's screen and is a confidentiality problem in the office.
+    """
+    print("departments:")
+    from solrise_erp.portal import catalog
+
+    for department in catalog.DEPARTMENTS:
+        key = department["key"]
+        check(
+            f"{key}: the form has buttons",
+            bool(catalog.categories_for(key)),
+            f"{len(department['categories'])} button(s)",
+        )
+        for user in department["assignees"]:
+            exists = bool(frappe.db.exists("User", user))
+            enabled = bool(frappe.db.get_value("User", user, "enabled")) if exists else False
+            check(
+                f"{key}: goes to {user}",
+                exists and enabled,
+                f"exists={exists} enabled={enabled}",
+            )
+
+    has_field = frappe.get_meta("Issue").has_field("solrise_department")
+    check(
+        "Issue.solrise_department exists",
+        has_field,
+        "desk.ensure_issue_department_field creates it on migrate",
+    )
+    if has_field:
+        rule = frappe.get_doc("Assignment Rule", "Solrise Support Routing")
+        check(
+            "the support rotation skips portal reports",
+            "solrise_department" in (rule.assign_condition or ""),
+            f"assign_condition={rule.assign_condition!r}",
+        )
+    notification = frappe.db.get_value("Notification", "Solrise New Ticket", "condition")
+    check(
+        "the new-ticket notification skips portal reports",
+        "solrise_department" in (notification or ""),
+        f"condition={notification!r}",
+    )
+
+    page = _app_file("www/start/report-issue/index.html")
+    check("the form submits the desk", 'name="department"' in page)
+
+
 def main():
     frappe.init(site=SITE, sites_path=SITES_PATH)
     frappe.connect()
@@ -464,6 +514,8 @@ def main():
         check_report_form()
         print()
         check_support_routing()
+        print()
+        check_departments()
     finally:
         frappe.destroy()
 

@@ -670,3 +670,55 @@ name out of it.
 
 > Adding a *new* person to a store is a data change, not a code change: add the
 > Contact and link it to the Customer. See `docs/18` §4.
+
+## 15. Departments: Maintenance, HR and IT / Support
+
+The home page has one tile per **department**. All three open the same form; the
+buttons, the assignee and the email differ. A report carries the desk it was sent
+to, so it is never routed or mailed to another desk's people.
+
+| Desk | Who it goes to | Where it is defined |
+|---|---|---|
+| Maintenance | `umair.nawaz@solrisestores.com` | `catalog.DEPARTMENTS` |
+| HR | `daniyal@solrise.com` (HR) | `catalog.DEPARTMENTS` |
+| IT / Support | `umair.nawaz@solrisestores.com` | `catalog.DEPARTMENTS` |
+
+Adding a button is a line in `catalog` (`CATEGORIES`, `HR_CATEGORIES`,
+`IT_CATEGORIES`); renaming a desk or moving a category is a line in
+`DEPARTMENTS`. Keys **and** labels must be unique across every desk, because
+`category_by_label` recovers a button's icon from an Issue subject, and
+`reports.py` reads the label before the first `" - "`.
+
+### 15.1 How a report is routed
+
+`create_issue(department=…)` does three things the shared rules must not also do:
+
+1. **Stamps the desk** on the Issue as `solrise_department` (a Custom Field,
+   created by `desk.ensure_issue_department_field()` on migrate). Only a portal
+   report carries it.
+2. **Assigns it** to the desk's people (`assign_to`, `notify=0`).
+3. **Emails the desk** - one message, to those same people, with the report's own
+   wording.
+
+Two shipped artefacts are then told to **skip** a report that has a desk:
+
+* the `Solrise Support Routing` Assignment Rule,
+  `assign_condition = "status == 'Open' and not solrise_department"`
+  (`desk.ensure_department_routing()`); and
+* the `Solrise New Ticket` notification, `condition = "not doc.solrise_department"`
+  (`desk.ensure_notification_scope()`).
+
+Both stay in force for a report raised **in the Desk**, which is what they were
+for. `scripts/verify_portal.py` gates all of it (`make verify-portal`), because
+the failure it prevents - an HR report sitting in the maintenance inbox - looks
+perfect on the customer's screen.
+
+### 15.2 The alerts follow the desk too
+
+`tasks.check_sla_breaches` and `tasks.escalate_stale_tickets` filter to reports
+with no desk or the Maintenance desk (`tasks._maintenance_only`), so an HR
+report's subject is not escalated to the support role. The daily digest still
+counts every open Issue; it carries no subject lines.
+
+> The HR and IT button lists are starting sets, not the client's. They are
+> content: rename and reorder them in `catalog` directly.

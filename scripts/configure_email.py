@@ -9,7 +9,7 @@ the account is created and then *proved* with a real SMTP send, not just a
 connection probe.
 
 Inputs (environment):
-    SL_EMAIL_ID       mailbox / login, e.g. info@solrisestores.com
+    SL_EMAIL_ID       mailbox / login, default support@solrisestores.com
     SL_EMAIL_PASSWORD password for that mailbox
     SL_SMTP_HOST      default mail.solrisestores.com
     SL_SMTP_PORT      default 465 (implicit TLS)
@@ -28,7 +28,10 @@ import frappe
 SITE = os.environ.get("SITE_NAME", "erp.localhost")
 SITES_PATH = os.environ.get("SITES_PATH", "/home/frappe/frappe-bench/sites")
 
-EMAIL_ID = os.environ.get("SL_EMAIL_ID", "info@solrisestores.com")
+#: The mailbox every notification sends as. `support@` rather than `info@`: the
+#: reports are supposed to reach the support desk, and a reply to a ticket should
+#: land there too (docs/19).
+EMAIL_ID = os.environ.get("SL_EMAIL_ID", "support@solrisestores.com")
 PASSWORD = os.environ.get("SL_EMAIL_PASSWORD", "")
 SMTP_HOST = os.environ.get("SL_SMTP_HOST", "mail.solrisestores.com")
 SMTP_PORT = os.environ.get("SL_SMTP_PORT", "465")

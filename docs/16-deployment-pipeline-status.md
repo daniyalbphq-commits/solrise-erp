@@ -511,6 +511,17 @@ Verified after the rollout: `make verify` OK - including
 'agreement_status']` - and `make verify-portal` OK (rule assignees
 `['umair.nawaz@solrisestores.com']`).
 
+### 5.9 Departments, and the mailbox (2026-10-08)
+
+The customer portal grew a **department** per tile - Maintenance, HR and IT /
+Support - all opening the same form with that desk's buttons, and the outgoing
+mailbox moved from `info@` to `support@solrisestores.com`. App revision
+`fe48008`; `make verify-portal` gates the routing (`check_departments`), because
+an HR report that also reaches the maintenance rotation looks perfect on the
+customer's screen. Full write-up: docs/17 section 15; the mailbox: docs/19.
+
+The HR and IT button lists are **starting sets** - content, not a client spec.
+
 ## 6. Open items
 
 1. ~~**The vault passphrase does not match the vault file.**~~ **Resolved 2026-10-01.**

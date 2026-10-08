@@ -1,8 +1,9 @@
 # 19 - Email: mail server configuration
 
-The site sends as **`info@solrisestores.com`** over **`mail.solrisestores.com:465`
+The site sends as **`support@solrisestores.com`** over **`mail.solrisestores.com:465`
 (implicit TLS)**. This is the account Frappe uses for every notification, the
-"Solrise New Ticket" mail to the Support Manager, and password resets.
+per-desk report mail, and password resets. It replaced `info@` on 2026-10-08: the
+reports belong to the support desk, and a reply to a ticket should land there.
 
 Last updated: 2026-10-08. Section 6 (who support mail goes to) is new.
 
@@ -54,7 +55,7 @@ SL_EMAIL_PASSWORD='...' SITE_ENV=local ./scripts/configure_email.sh
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SL_EMAIL_ID` | `info@solrisestores.com` | mailbox the ERP sends as and logs in as |
+| `SL_EMAIL_ID` | `support@solrisestores.com` | mailbox the ERP sends as and logs in as |
 | `SL_EMAIL_PASSWORD` | *(required)* | that mailbox's password |
 | `SL_SMTP_HOST` / `SL_SMTP_PORT` | `mail.solrisestores.com` / `465` | outgoing server, implicit TLS |
 | `SL_ENABLE_INCOMING` | `0` | `1` also points the IMAP side at the same server |
@@ -126,7 +127,7 @@ If you want it, use a dedicated mailbox (e.g. `support@`) and set
   this was written, but it is short-lived - renew it on the mail host, or
   outbound mail will start failing closed.
 * The sender is the mailbox itself (`always_use_account_email_id_as_sender`), so
-  the address on every ERP mail is `info@solrisestores.com` regardless of which
+  the address on every ERP mail is `support@solrisestores.com` regardless of which
   user triggered it.
 * Store managers' user logins use `@stores.invalid` placeholder addresses
   (`docs/18` section 5), so nothing can be *delivered* to them. Outgoing mail to
@@ -158,6 +159,11 @@ accounts that only need access keep `Support Team` / `Support Agent`. Defaults:
 mail and routing to `umair.nawaz@solrisestores.com`; `daniyalbphq@gmail.com` and
 `daniyal@solrise.com` keep access and lose the role. Idempotent, and it only ever
 touches the users named in `SUPPORT_ROUTING_USERS` / `SUPPORT_ACCESS_ONLY_USERS`.
+
+**A customer portal report is routed by *desk*, not by this role.** The portal
+assigns the report to the desk it was sent to and emails that desk, and the two
+role-based artefacts above are told to skip it - docs/17 section 15. The rule and
+the notification stay in force for a report raised in the Desk.
 
 > **A Role Profile re-applies its roles on every User save**, so a role removed
 > from the user alone comes straight back. `daniyal@solrise.com` is on the
