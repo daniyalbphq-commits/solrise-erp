@@ -2,8 +2,12 @@
 
 The site sends as **`support@solrisestores.com`** over **`mail.solrisestores.com:465`
 (implicit TLS)**. This is the account Frappe uses for every notification, the
-per-desk report mail, and password resets. It replaced `info@` on 2026-10-08: the
-reports belong to the support desk, and a reply to a ticket should land there.
+per-desk report mail, and password resets. It is meant to have replaced `info@`
+on 2026-10-08 - the reports belong to the support desk, and a reply to a ticket
+should land there - but the `support@` credentials supplied were **rejected**
+(`535 authentication failed`), so the working `info@` account is still in place.
+`SL_EMAIL_ID` already defaults to `support@`; re-run the script with the right
+password (docs/19 section 6).
 
 Last updated: 2026-10-08. Section 6 (who support mail goes to) is new.
 

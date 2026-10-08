@@ -514,13 +514,24 @@ Verified after the rollout: `make verify` OK - including
 ### 5.9 Departments, and the mailbox (2026-10-08)
 
 The customer portal grew a **department** per tile - Maintenance, HR and IT /
-Support - all opening the same form with that desk's buttons, and the outgoing
-mailbox moved from `info@` to `support@solrisestores.com`. App revision
-`fe48008`; `make verify-portal` gates the routing (`check_departments`), because
-an HR report that also reaches the maintenance rotation looks perfect on the
-customer's screen. Full write-up: docs/17 section 15; the mailbox: docs/19.
+Support - all opening the same form with that desk's buttons. App revision
+`50723f8`, image `dbbe969`. `make verify-portal` gates the routing
+(`check_departments`), because an HR report that also reaches the maintenance
+rotation looks perfect on the customer's screen. Full write-up: docs/17 section
+15; the mailbox: docs/19.
 
 The HR and IT button lists are **starting sets** - content, not a client spec.
+
+Verified live: `/start` offers `Maintenance`, `HR` and `IT / Support`, opening
+`/start/report-issue?department=…` with 22, 8 and 9 buttons; the desk goes to
+`umair.nawaz@` (Maintenance, IT) and `daniyal@solrise.com` (HR);
+`Issue.solrise_department` exists; both role-based artefacts skip portal reports.
+
+> **The mailbox is still `info@`.** `support@solrisestores.com` answered
+> `535 authentication failed` for the password supplied, so
+> `scripts/configure_email.sh` refused it and left the working account alone (it
+> probes with a real SMTP send and rolls back on failure). Re-run it once the
+> credentials are right - the default is already `support@` (docs/19 section 6).
 
 ## 6. Open items
 
