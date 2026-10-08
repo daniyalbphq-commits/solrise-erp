@@ -52,13 +52,19 @@ ISSUE = "Issue"
 
 
 def people(raw, default):
-    seen, out = set(), []
-    for part in (raw if raw is not None else default).split(","):
-        email = part.strip()
-        if email and email.lower() not in seen:
-            seen.add(email.lower())
-            out.append(email)
-    return out
+	"""A comma-separated list, falling back to `default` when blank.
+
+	`scripts/run-python.sh` forwards every `SUPPORT_*` variable, so an unset one
+	arrives as the empty string rather than as absent - blank has to mean default.
+	"""
+	value = (raw or "").strip() or default
+	seen, out = set(), []
+	for part in value.split(","):
+		email = part.strip()
+		if email and email.lower() not in seen:
+			seen.add(email.lower())
+			out.append(email)
+	return out
 
 
 def user_exists(email):

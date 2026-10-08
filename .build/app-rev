@@ -16,7 +16,16 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                fe48008782f79a2cfd88e2ea30cff4ba0927ba6b
+solrise_erp-app                                50723f85ba849fbff329664ceb1e538144c085e0
+
+# 2026-10-08  A curated routing rule is left alone. `desk.ensure_support_routing()`
+#             used to add every holder of a support role to the Assignment Rule,
+#             so a `bench migrate` put the administrators back into the rotation
+#             that `configure_support.py` had just taken them out of. It now leaves
+#             an operator-curated list exactly as it is. Also: the SUPPORT_*
+#             variables arrive as empty strings when unset, so the script's
+#             defaults are applied on blank rather than only on absent.
+#
 
 # 2026-10-08  Departments: Maintenance, HR and IT / Support. The home page has one
 #             tile per desk; all three open the report form with that desk's
