@@ -141,14 +141,16 @@ def ensure_support_routing():
 			return None
 
 		if known - {"Administrator"}:
-			# Somebody has curated this list. Add anyone new who holds a support role
-			# and take nobody out: a rule that quietly dropped a maintainer because a
-			# second one joined would be worse than a slightly stale one.
-			final = known | wanted
-		else:
-			# Still the shipped default - `Administrator` alone, or empty. Take it
-			# over, because routing tickets to the built-in account is not routing.
-			final = set(wanted)
+			# Somebody has curated this list - typically the operator, via
+			# `scripts/configure_support.py`. Leave it exactly as it is. Adding every
+			# holder of a support role back would undo that, which is how the
+			# administrators ended up back in the rotation once before; and quietly
+			# dropping a maintainer would be worse than a slightly stale list.
+			return None
+
+		# Still the shipped default - `Administrator` alone, or empty. Take it over,
+		# because routing tickets to the built-in account is not routing.
+		final = set(wanted)
 
 		if final == known:
 			return None
