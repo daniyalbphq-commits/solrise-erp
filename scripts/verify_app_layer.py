@@ -246,6 +246,29 @@ def check_configuration_artifacts():
         warn("knowledge base", "Solrise FAQ is empty - the assistant answers no FAQ")
 
 
+def check_support_alerts():
+    """The support alerts must name the ticket they are about.
+
+    `tasks._issue_fields()` filters its candidate list through `meta.has_field()`,
+    and `name` is a *virtual* field, so a filter that did not exempt it dropped it:
+    the escalation subject read "... idle for 3 days: None", `_stamp_breached`
+    wrote to `None`, and `_collect_breached_issues` deduplicated on `None`, so SLA
+    breach alerts never sent at all. This is the check that would have caught it.
+    """
+    print("support alerts:")
+    try:
+        from solrise_erp import tasks
+    except Exception as exc:  # noqa: BLE001
+        fail("tasks module importable", f"{type(exc).__name__}: {exc}")
+        return
+    try:
+        fields = list(tasks._issue_fields())
+    except Exception as exc:  # noqa: BLE001
+        fail("issue fields resolvable", f"{type(exc).__name__}: {exc}")
+        return
+    check("alert queries carry the ticket name", "name" in fields, f"{fields}")
+
+
 def main():
     frappe.init(site=SITE, sites_path=SITES_PATH)
     frappe.connect()
@@ -257,6 +280,7 @@ def main():
         check_app_configuration()
         check_entry_points()
         check_configuration_artifacts()
+        check_support_alerts()
     finally:
         frappe.destroy()
 

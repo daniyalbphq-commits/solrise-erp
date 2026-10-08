@@ -23,7 +23,7 @@ export
 .PHONY: help image local-up local-down init site logs ps shell \
         prod-up prod-down prod-logs aws-up aws-down aws-logs aws-rollout \
         backup restore fixtures pull-fixtures media verify branding app-fixtures \
-        stores mail assistant clear-cache verify-portal logins
+        stores mail assistant support clear-cache verify-portal logins
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -72,6 +72,9 @@ mail: ## Point the site at the mail server (needs SL_EMAIL_PASSWORD in the envir
 
 assistant: ## Configure the LLM assistant "Ask Solrise" (ASSISTANT_* in the environment; needs ASSISTANT_API_KEY)
 	./scripts/run-python.sh scripts/configure_assistant.py
+
+support: ## Point support mail at one person without dropping anyone's access (SUPPORT_* in the environment)
+	./scripts/run-python.sh scripts/configure_support.py
 
 init: image local-up site ## Full local bring-up in one shot
 

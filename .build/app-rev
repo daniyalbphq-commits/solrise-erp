@@ -16,7 +16,15 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                ea7333d553623a127c1efe656d6883aaf47af5cc
+solrise_erp-app                                a88442f4dac2262eb4f37597a7909a7d930175d6
+
+# 2026-10-08  Support alerts now name the ticket. `tasks._issue_fields()` filtered
+#             Issue fields through `meta.has_field()`, and `name` is a virtual
+#             field, so it was dropped: every alert read "... idle for 3 days:
+#             None" with no link, and `_collect_breached_issues` deduplicated on
+#             None, so SLA breach alerts never sent at all. `verify_app_layer.py`
+#             now gates it. docs/19 section 6.
+#
 
 # 2026-10-02  A missing name no longer loses a report. The Customer picker's top
 #             option is the default, and when a client sends no name - an older

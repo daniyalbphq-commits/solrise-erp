@@ -4,7 +4,7 @@ The site sends as **`info@solrisestores.com`** over **`mail.solrisestores.com:46
 (implicit TLS)**. This is the account Frappe uses for every notification, the
 "Solrise New Ticket" mail to the Support Manager, and password resets.
 
-Last updated: 2026-10-01 (verified locally with a real send).
+Last updated: 2026-10-08. Section 6 (who support mail goes to) is new.
 
 ---
 
@@ -132,3 +132,46 @@ If you want it, use a dedicated mailbox (e.g. `support@`) and set
   (`docs/18` section 5), so nothing can be *delivered* to them. Outgoing mail to
   the Support Manager works; per-manager mail needs real addresses in the store
   sheet.
+
+## 6. Who support mail goes to
+
+Every support mail is addressed by **role**, not by person. The two Issue
+notifications (`Solrise New Ticket`, `Solrise SLA Breach Alert`) list
+`receiver_by_role = Support Manager`, and `tasks.py`'s hourly stale-ticket nudge
+and daily digest both resolve `_support_manager_recipients()` to that same role.
+The `Solrise Support Routing` Assignment Rule is a fifth sender: it round-robins a
+new Issue across a named user list and emails whoever it picks.
+
+So the role was doing two jobs at once - permission *and* notification - and an
+administrator who also worked tickets received every support mail. The two can be
+separated, because `Support Team` and `Support Agent` grant the same `Issue`
+permissions as `Support Manager` (read/write/create/share - see `install.py` and
+the Custom DocPerm on `Issue`):
+
+```bash
+make support          # SUPPORT_* in the environment
+```
+
+`scripts/configure_support.py` leaves `Support Manager` to the one person who
+answers the mail and points the Assignment Rule at that same person, while the
+accounts that only need access keep `Support Team` / `Support Agent`. Defaults:
+mail and routing to `umair.nawaz@solrisestores.com`; `daniyalbphq@gmail.com` and
+`daniyal@solrise.com` keep access and lose the role. Idempotent, and it only ever
+touches the users named in `SUPPORT_ROUTING_USERS` / `SUPPORT_ACCESS_ONLY_USERS`.
+
+> **A Role Profile re-applies its roles on every User save**, so a role removed
+> from the user alone comes straight back. `daniyal@solrise.com` is on the
+> site-local `HR` profile, which listed `Support Manager`; the script removes it
+> from the profile too, then re-saves the user. That is the trap here - the first
+> run reported the role removed while the user still held it.
+
+### 6.1 The alerts were nameless
+
+`tasks._issue_fields()` built its field list by filtering candidates through
+`meta.has_field(...)`, and **`name` is a virtual field**, so `has_field("name")`
+is `False` and it was dropped. Every alert therefore read
+`[Solrise] Ticket idle for 3 days: None`, the ticket link was empty,
+`_stamp_breached` wrote to `None`, and `_collect_breached_issues` deduplicated on
+`None` - so **SLA breach alerts never sent at all**. `_issue_fields()` now always
+includes `name`, and `verify_app_layer.py` asserts it
+(`alert queries carry the ticket name`).

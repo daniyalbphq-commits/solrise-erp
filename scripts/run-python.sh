@@ -45,6 +45,10 @@ compose exec -T \
   -e "ASSISTANT_SYSTEM_PROMPT=${ASSISTANT_SYSTEM_PROMPT:-}" \
   -e "ASSISTANT_CHAT_FALLBACK=${ASSISTANT_CHAT_FALLBACK:-}" \
   -e "ASSISTANT_PROBE=${ASSISTANT_PROBE:-}" \
+  -e "SUPPORT_ROUTING_USERS=${SUPPORT_ROUTING_USERS:-}" \
+  -e "SUPPORT_ACCESS_ONLY_USERS=${SUPPORT_ACCESS_ONLY_USERS:-}" \
+  -e "SUPPORT_MANAGER_ROLE=${SUPPORT_MANAGER_ROLE:-}" \
+  -e "SUPPORT_RULE=${SUPPORT_RULE:-}" \
   backend bash -lc \
   'cd /home/frappe/frappe-bench/sites && ../env/bin/python -' < "${FILE}"
 log "done"

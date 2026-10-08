@@ -4,9 +4,11 @@ What is automated, what is verified working, and what is still open. This is the
 context document: read it first before touching the AWS stack, and update it
 whenever a pipeline stage changes state.
 
-Last updated: 2026-10-02. The live site was re-verified green on 2026-10-02 (branding,
+Last updated: 2026-10-08. The live site was re-verified green on 2026-10-02 (branding,
 app layer, chat, portal - `make verify`, `make verify-chat`, `make verify-portal`);
-the white-label requirement is fully deployed. The one functional gap left is the
+the white-label requirement is fully deployed. On 2026-10-08 support mail was routed
+to one person without dropping anyone's access (§7), and the nameless support
+alerts were fixed (`tasks._issue_fields()`). The one functional gap left is the
 operator's LLM key (§6 item 10), which now has a supported one-command path
 (`make assistant`). Also open: rotating the store password (§6 item 14).
 
@@ -718,3 +720,23 @@ serves `200 text/css`; `ping` is `200`.
   compare the served bytes with the container's file before touching the code:
   `curl -s <site>/assets/solrise_erp/js/solrise_portal.js | wc -c` against
   `podman exec solrise_backend_1 wc -c /home/frappe/frappe-bench/apps/solrise_erp/solrise_erp/public/js/solrise_portal.js`.
+* **The `Support Manager` role was doing two jobs, so administrators got every
+  support mail.** The new-ticket and SLA notifications address `receiver_by_role`,
+  and `tasks.py`'s stale nudge and digest resolve the same role - so anyone who
+  held it was mailed, permissions and all. Access does not depend on it:
+  `Support Team` and `Support Agent` grant the same `Issue` permissions. Leave the
+  role to the one person who answers the mail and keep everyone else working via
+  `Support Team`/`Support Agent`; `scripts/configure_support.py` (`make support`)
+  does that and repoints the Assignment Rule. See `docs/19` section 6.
+* **Removing a role from a user does nothing if a Role Profile lists it.**
+  `daniyal@solrise.com` is on the site-local `HR` profile, which contained
+  `Support Manager`; Frappe re-applies `role_profile_name` on every User save, so
+  the child-table edit was silently undone and the first run *reported* the role
+  removed while the user still held it. Clean the profile, then re-save the user.
+* **`meta.has_field("name")` is `False` - `name` is a virtual field.**
+  `tasks._issue_fields()` filtered its candidates through it, dropped `name`, and
+  every support alert came out as `[Solrise] Ticket idle for 3 days: None` with no
+  ticket link. Worse, `_collect_breached_issues` deduplicated on `None`, so SLA
+  breach alerts never sent at all - a silent failure, found only by reading the
+  `Email Queue` / `Notification Log` subjects. `_issue_fields()` now always keeps
+  `name`, and `verify_app_layer.py` gates it.
