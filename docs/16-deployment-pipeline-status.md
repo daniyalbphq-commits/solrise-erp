@@ -7,10 +7,12 @@ whenever a pipeline stage changes state.
 Last updated: 2026-10-08. The live site was re-verified green on 2026-10-02 (branding,
 app layer, chat, portal - `make verify`, `make verify-chat`, `make verify-portal`);
 the white-label requirement is fully deployed. On 2026-10-08 support mail was routed
-to one person without dropping anyone's access (§7), and the nameless support
-alerts were fixed (`tasks._issue_fields()`). The one functional gap left is the
-operator's LLM key (§6 item 10), which now has a supported one-command path
-(`make assistant`). Also open: rotating the store password (§6 item 14).
+to one person without dropping anyone's access, the nameless support alerts were
+fixed (`tasks._issue_fields()`), and the image build was repaired and pinned - it
+had been failing on a group the base image no longer defines (§5.8, §7). The one
+functional gap left is the operator's LLM key (§6 item 10), which now has a
+supported one-command path (`make assistant`). Also open: rotating the store
+password (§6 item 14).
 
 ---
 
@@ -480,6 +482,34 @@ Verified after the rollout: `make verify` OK; `make verify-portal` OK, including
 the new `a missing name defaults to the picker's top option` check; the served
 page carries `solrise_portal.js?v=1790968635`; `/files/website_theme/.../inter.css`
 serves `200 text/css`; `ping` is `200`.
+
+### 5.8 Support mail, the nameless alerts, and the drifting build (2026-10-08)
+
+* **Support mail now goes to one person.** Every support sender targets the
+  `Support Manager` role (and the Assignment Rule), so an administrator who also
+  worked tickets received all of it. `scripts/configure_support.py`
+  (`make support`) leaves the role to `umair.nawaz@solrisestores.com` and points
+  the rule at him; `daniyalbphq@gmail.com` and `daniyal@solrise.com` keep access
+  through `Support Team` / `Support Agent`, which grant the same Issue
+  permissions. **Site data only - no rebuild was needed.** The trap: the role
+  reaches `daniyal@solrise.com` through the site-local `HR` Role Profile, which
+  Frappe re-applies on every save. docs/19 section 6.
+* **The support alerts were nameless, and SLA breach alerts never sent.**
+  `tasks._issue_fields()` filtered its candidates through `meta.has_field()`, and
+  `name` is a virtual field, so it was dropped. Fixed in app `a88442f`;
+  `verify_app_layer.py` now gates it.
+* **The build had been running on an unpinned `frappe_docker` and a moving base
+  image.** Three runs failed at the Solrise layer's `chown frappe:frappe` -
+  `invalid group: frappe` - because `frappe/base:version-15` now runs the
+  `frappe` user as `uid 1000, gid 0` and defines no `frappe` group. `chown
+  frappe` (the user only, never a group) is base-agnostic, and
+  `FRAPPE_DOCKER_REF` pins frappe_docker to a commit. Build run **19** green,
+  image `796ccf4e`; section 7 has both traps.
+
+Verified after the rollout: `make verify` OK - including
+`alert queries carry the ticket name - ['name', 'subject', 'status', 'priority',
+'agreement_status']` - and `make verify-portal` OK (rule assignees
+`['umair.nawaz@solrisestores.com']`).
 
 ## 6. Open items
 
