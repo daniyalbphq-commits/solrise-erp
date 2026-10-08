@@ -66,6 +66,56 @@ class CatalogShapeTest(unittest.TestCase):
 			"{0} keys are not unique: {1}".format(what, seen),
 		)
 
+	def test_every_choice_belongs_to_exactly_one_desk(self):
+		"""Keys and labels are unique across *all* desks.
+
+		`category_by_label` recovers a button's icon from an Issue subject, so two
+		desks sharing a label would show the wrong icon on one of them.
+		"""
+		seen = {}
+		labels = {}
+		for department in self.catalog.DEPARTMENTS:
+			for category in department["categories"]:
+				self.assertNotIn(
+					category["key"], seen, "{0} is on two desks".format(category["key"])
+				)
+				self.assertNotIn(
+					category["label"], labels, "{0} is on two desks".format(category["label"])
+				)
+				seen[category["key"]] = department["key"]
+				labels[category["label"]] = department["key"]
+		self.assertEqual(len(seen), len(self.catalog.ALL_CATEGORIES))
+
+	def test_departments_are_complete_and_addressable(self):
+		self._unique(self.catalog.DEPARTMENTS, "key", "department")
+		self._unique(self.catalog.DEPARTMENTS, "label", "department")
+		for department in self.catalog.DEPARTMENTS:
+			key = department["key"]
+			self.assertTrue(department.get("caption"), key)
+			self.assertTrue(department.get("icon"), key)
+			self.assertTrue(department["assignees"], "{0} has nobody to route to".format(key))
+			self.assertTrue(self.catalog.categories_for(key), key)
+			self.assertEqual(
+				self.catalog.department_for_category(department["categories"][0]["key"])["key"],
+				key,
+			)
+			self.assertEqual(
+				self.catalog.department_for_category(department["default_category"])["key"],
+				key,
+				"{0}: the default button is not on this desk".format(key),
+			)
+		self.assertIsNone(self.catalog.department_for_category("not-a-category"))
+		self.assertIsNone(self.catalog.department("not-a-department"))
+		self.assertIsNone(self.catalog.category(f"{self.catalog.DEFAULT_DEPARTMENT}-other"))
+
+	def test_every_tile_opens_a_desk(self):
+		for tile in self.catalog.TILES:
+			self.assertEqual(
+				tile.get("department"),
+				tile["key"],
+				"the tile at {0} does not name the desk it opens".format(tile["route"]),
+			)
+
 	def test_tiles_are_complete_and_unique(self):
 		self._unique(self.catalog.TILES, "key", "tile")
 		for tile in self.catalog.TILES:
@@ -334,6 +384,22 @@ class ReportFormTest(unittest.TestCase):
 		)
 		# The refusal stays as the last resort, for a caller with no name at all.
 		self.assertIn('frappe.throw(_("Please choose your name.")', api)
+
+	def test_the_form_carries_the_desk(self):
+		"""The desk decides the buttons, the assignee and the email - so it is sent."""
+		form = _read("www", "start", "report-issue", "index.html")
+		self.assertIn('name="department"', form, "the desk is not submitted with the form")
+
+		js = _read("public", "js", "solrise_portal.js")
+		self.assertIn('department: value_of("sl-department")', js)
+
+		api = _read("api", "portal.py")
+		self.assertIn("department=None", api, "create_issue does not accept a department")
+		self.assertIn("_assign_desk(", api, "the report is not assigned to its desk")
+		self.assertIn("_email_desk(", api, "the desk is not emailed")
+
+		page = _read("www", "start", "report-issue", "index.py")
+		self.assertIn("catalog.categories_for(", page, "the form shows every desk's buttons")
 
 	def test_the_customer_picker_is_wired_from_markup_to_payload(self):
 		form = _read("www", "start", "report-issue", "index.html")

@@ -18,21 +18,11 @@ Routes are absolute site paths. The portal has no Desk.
 """
 
 # --- home page buttons -------------------------------------------------------
-# `roles` is a tuple of roles allowed to see the tile. An empty tuple means
-# "every logged-in user", which is all the single tile below needs. A tile's
-# `route` must have a matching ``www/<route>/index.html`` in this app; the test
-# enforces that, so a button can never point at a page nobody wrote.
-TILES = (
-	{
-		"key": "report-issue",
-		"label": "Report a problem",
-		"caption": "Something is broken",
-		# U+1F6E0 (hammer and wrench) + U+FE0F (render as emoji)
-		"icon": "\U0001F6E0\uFE0F",
-		"route": "/start/report-issue",
-		"roles": (),
-	},
-)
+# One tile per *department*: Maintenance, HR and IT / Support. Each opens the same
+# report form with that department's buttons, so the customer picks the desk
+# first and the problem second. `TILES` is derived from `DEPARTMENTS` further
+# down, because it needs the category sets first. `roles` is a tuple of roles
+# allowed to see a tile; an empty tuple means every logged-in user.
 
 # --- "what is wrong?" choices on the report form -----------------------------
 # Transcribed from the maintenance category list ("Maintenance Category.docx"):
@@ -73,6 +63,97 @@ CATEGORIES = (
 #: The category chosen when the request omits one, and the one pre-selected in
 #: the form.
 DEFAULT_CATEGORY = "other"
+
+# --- HR and IT / Support choices ---------------------------------------------
+# The maintenance list above is transcribed from the client's document. These two
+# are the same shape - an icon first, a short label second - and are the starting
+# sets for the other two desks. They are content, not code: rename, reorder and
+# add freely. Keep keys *and* labels unique across every department, because
+# `category_by_label` recovers the button's icon from an Issue subject and
+# `reports.py` reads the label before the first " - ".
+HR_CATEGORIES = (
+	{"key": "paycheck", "label": "Paycheck Problem", "icon": "\U0001F4B5"},  # U+1F4B5 dollar
+	{"key": "leave", "label": "Leave & Time Off", "icon": "\U0001F5D3\uFE0F"},  # U+1F5D3 calendar
+	{"key": "attendance", "label": "Attendance", "icon": "\u23F0"},  # U+23F0 alarm clock
+	{"key": "benefits", "label": "Benefits & Insurance", "icon": "\U0001F6E1\uFE0F"},  # U+1F6E1 shield
+	{"key": "onboarding", "label": "New Hire Setup", "icon": "\U0001F9D1"},  # U+1F9D1 person
+	{"key": "employee-info", "label": "My Info is Wrong", "icon": "\U0001F4C7"},  # U+1F4C7 card index
+	{"key": "conduct", "label": "Manager or Conduct", "icon": "\u2696\uFE0F"},  # U+2696 scales
+	{"key": "hr-other", "label": "Something else (HR)", "icon": "\u2757"},  # U+2757 exclamation
+)
+
+IT_CATEGORIES = (
+	{"key": "login-access", "label": "Login & Access", "icon": "\U0001F511"},  # U+1F511 key
+	{"key": "register-pos", "label": "Register / POS", "icon": "\U0001F9FE"},  # U+1F9FE receipt
+	{"key": "printer", "label": "Printer", "icon": "\U0001F5A8\uFE0F"},  # U+1F5A8 printer
+	{"key": "network", "label": "Internet & Wi-Fi", "icon": "\U0001F4F6"},  # U+1F4F6 antenna
+	{"key": "computer", "label": "Computer", "icon": "\U0001F4BB"},  # U+1F4BB laptop
+	{"key": "phone", "label": "Phone & Radio", "icon": "\U0001F4DE"},  # U+1F4DE telephone
+	{"key": "email", "label": "Email", "icon": "\u2709\uFE0F"},  # U+2709 envelope
+	{"key": "software", "label": "Software & Apps", "icon": "\U0001F9E9"},  # U+1F9E9 puzzle
+	{"key": "it-other", "label": "Something else (IT)", "icon": "\u2757"},  # U+2757 exclamation
+)
+
+# --- departments -------------------------------------------------------------
+# The desk a report goes to. `assignees` are the people the portal assigns the
+# Issue to and emails; the form's "Customer" picker is still the store's own
+# managers. `default_category` is the escape hatch pre-selected on the form.
+DEPARTMENTS = (
+	{
+		"key": "maintenance",
+		"label": "Maintenance",
+		"caption": "Something is broken",
+		# U+1F6E0 (hammer and wrench) + U+FE0F (render as emoji)
+		"icon": "\U0001F6E0\uFE0F",
+		"categories": CATEGORIES,
+		"default_category": DEFAULT_CATEGORY,
+		"assignees": ("umair.nawaz@solrisestores.com",),
+	},
+	{
+		"key": "hr",
+		"label": "HR",
+		"caption": "Pay, leave, people",
+		"icon": "\U0001F465",  # U+1F465 busts in silhouette
+		"categories": HR_CATEGORIES,
+		"default_category": "hr-other",
+		"assignees": ("daniyal@solrise.com",),
+	},
+	{
+		"key": "it",
+		"label": "IT / Support",
+		"caption": "Computer, printer, network",
+		"icon": "\U0001F4BB",  # U+1F4BB laptop
+		"categories": IT_CATEGORIES,
+		"default_category": "it-other",
+		"assignees": ("umair.nawaz@solrisestores.com",),
+	},
+)
+
+#: The desk a request goes to when it does not name one. Deliberately the one the
+#: portal shipped with, so an older client keeps working.
+DEFAULT_DEPARTMENT = "maintenance"
+
+#: Every button on every desk - what `category()` and `category_by_label()` search.
+ALL_CATEGORIES = CATEGORIES + HR_CATEGORIES + IT_CATEGORIES
+
+#: The one page every desk tile opens; the desk rides along as `?department=`.
+REPORT_ROUTE = "/start/report-issue"
+
+# --- home page tiles (derived from DEPARTMENTS) ------------------------------
+# A tile's `route` must have a matching ``www/<route>/index.html`` in this app; the
+# test enforces that, so a button can never point at a page nobody wrote.
+TILES = tuple(
+	{
+		"key": department["key"],
+		"label": department["label"],
+		"caption": department["caption"],
+		"icon": department["icon"],
+		"route": REPORT_ROUTE,
+		"department": department["key"],
+		"roles": (),
+	}
+	for department in DEPARTMENTS
+)
 
 # --- "is it urgent?" choices -------------------------------------------------
 # `priority` is the Issue `priority` value the choice maps to. The API re-checks
@@ -198,8 +279,12 @@ def tile(key):
 
 
 def category(key):
-	"""The category for `key`, or `None` when it is not one we offer."""
-	return _by_key(CATEGORIES, key)
+	"""The category for `key`, or `None` when it is not one we offer.
+
+	Searches every department's buttons, so a report from any desk resolves its
+	icon.
+	"""
+	return _by_key(ALL_CATEGORIES, key)
 
 
 def category_by_label(label):
@@ -207,19 +292,65 @@ def category_by_label(label):
 
 	The portal does not store which button was pressed - the label in the Issue
 	subject is the only trace. Matching it back is what lets a report show the same
-	icon the customer tapped; no match means no icon, never a guessed one.
+	icon the customer tapped; no match means no icon, never a guessed one. Searches
+	every department, and the labels are unique across all of them.
 	"""
 	wanted = str(label or "").strip().casefold()
 	if not wanted:
 		return None
-	for entry in CATEGORIES:
+	for entry in ALL_CATEGORIES:
 		if str(entry["label"]).casefold() == wanted:
 			return dict(entry)
 	return None
 
 
+def department(key):
+	"""The desk for `key`, or `None` when it is not one we offer."""
+	return _by_key(DEPARTMENTS, key)
+
+
+def default_department():
+	return dict(_by_key(DEPARTMENTS, DEFAULT_DEPARTMENT) or DEPARTMENTS[0])
+
+
+def department_for_category(key):
+	"""The desk a category belongs to, or `None`."""
+	wanted = str(key or "").strip()
+	if not wanted:
+		return None
+	for entry in DEPARTMENTS:
+		if any(category["key"] == wanted for category in entry["categories"]):
+			return dict(entry)
+	return None
+
+
+def categories_for(key):
+	"""The choice buttons for a desk, in catalogue order.
+
+	An unknown desk answers the default desk's buttons rather than nothing, so a
+	stale link still renders a usable form.
+	"""
+	entry = department(key) or default_department()
+	return [dict(category) for category in entry["categories"]]
+
+
+def assignees_for(key):
+	"""The people a report to this desk is assigned to and emailed."""
+	entry = department(key) or default_department()
+	return tuple(entry.get("assignees") or ())
+
+
 def default_category():
-	return dict(_by_key(CATEGORIES, DEFAULT_CATEGORY) or CATEGORIES[-1])
+	entry = default_department()
+	return dict(_by_key(entry["categories"], entry["default_category"]) or entry["categories"][-1])
+
+
+def default_category_for(key):
+	"""The pre-selected button for a desk: its own escape hatch."""
+	entry = department(key) or default_department()
+	return dict(
+		_by_key(entry["categories"], entry["default_category"]) or entry["categories"][-1]
+	)
 
 
 def urgency(key):

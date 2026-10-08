@@ -33,6 +33,12 @@ SUBJECT_LIMIT = 140
 #: stuff the record line.
 REPORTER_LIMIT = 80
 
+#: The Custom Field the portal stamps with the desk the report came from
+#: (`desk.ensure_issue_department_field`). It is the signal the Assignment Rule
+#: and the new-ticket notification exclude portal reports by, so a report to HR
+#: is never routed or emailed to the maintenance desk.
+DEPARTMENT_FIELD = "solrise_department"
+
 #: A downscaled phone photo is a few hundred KB. This is the post-decode ceiling,
 #: so a client that skips the resize still cannot post an unbounded body.
 PHOTO_BYTES_LIMIT = 6 * 1024 * 1024
@@ -124,17 +130,17 @@ def _subject(category_label, station, person):
 	return _text("{0} - {1}".format(category_label, where), SUBJECT_LIMIT)
 
 
-def _description_html(category_label, urgency_label, note, reporter=""):
+def _description_html(category_label, urgency_label, note, reporter="", desk_label=""):
 	"""The Issue body: the customer's own words, then the form's own record.
 
 	The note is HTML-escaped before it is stored: Issue.description is a Text
 	Editor field that the Desk renders as HTML, so unescaped input would be a
 	stored-XSS path from the portal into a manager's browser.
 
-	The record line carries who reported it as well as what and how urgent, and it
-	is a small paragraph of its own so portal.reports can drop it when showing the
-	customer what they wrote - otherwise every detail page quotes the form's
-	bookkeeping back at them.
+	The record line carries who reported it, and which desk it went to, as well as
+	what and how urgent. It is a small paragraph of its own so portal.reports can
+	drop it when showing the customer what they wrote - otherwise every detail page
+	quotes the form's bookkeeping back at them.
 	"""
 	parts = []
 	note = _text(note, DESCRIPTION_LIMIT)
@@ -142,6 +148,10 @@ def _description_html(category_label, urgency_label, note, reporter=""):
 		parts.append("<p>{0}</p>".format(frappe.utils.escape_html(note).replace(chr(10), "<br>")))
 
 	record = _("Reported from the customer portal - {0} / {1}").format(category_label, urgency_label)
+	if desk_label:
+		record = _("Reported to {0} from the customer portal - {1} / {2}").format(
+			desk_label, category_label, urgency_label
+		)
 	reporter = _text(reporter, REPORTER_LIMIT)
 	if reporter:
 		record = "{0}: {1} - {2}".format(_("Customer"), reporter, record)
@@ -226,12 +236,111 @@ def _reporter_default(customer, person):
 	return _text(names[0] if names else "", REPORTER_LIMIT)
 
 
+def _desk(department, category_key):
+	"""Which desk this report belongs to.
+
+	What the form said, else the desk the category belongs to (an older client that
+	sends only a category is routed correctly), else the default desk.
+	"""
+	return (
+		catalog.department(department)
+		or catalog.department_for_category(category_key)
+		or catalog.default_department()
+	)
+
+
+def _category_for_desk(desk, key):
+	"""The chosen button, but only when it belongs to this desk."""
+	chosen = catalog.category(key)
+	if chosen:
+		for entry in desk["categories"]:
+			if entry["key"] == chosen["key"]:
+				return chosen
+	return catalog.default_category_for(desk["key"])
+
+
+def _assign_desk(issue, desk):
+	"""Assign the new report to the desk's people; return the user list.
+
+	`notify=0`: this function's job is the list, and the desk email is sent once,
+	afterwards, with the report's own wording - an assignment notification would
+	send a second, thinner one.
+	"""
+	assignees = list(catalog.assignees_for(desk["key"]))
+	if not assignees:
+		return []
+	try:
+		from frappe.desk.form import assign_to
+
+		assign_to.add(
+			{
+				"assign_to": assignees,
+				"doctype": ISSUE,
+				"name": issue.name,
+				"description": _("New report from the customer portal"),
+				"notify": 0,
+			}
+		)
+	except Exception:
+		_log_error("Solrise portal: assign {0}".format(desk["key"]))
+	return assignees
+
+
+def _email_desk(issue, desk, station, urgency_label):
+	"""Tell the desk about the report - one email, to the desk's own people.
+
+	Every failure is a log line, never a lost report: the Issue is already stored,
+	and the Desk shows it either way.
+	"""
+	recipients = []
+	for user in catalog.assignees_for(desk["key"]):
+		try:
+			if frappe.db.get_value("User", user, "enabled"):
+				recipients.append(user)
+		except Exception:
+			continue
+	if not recipients:
+		return []
+	link = frappe.utils.get_url_to_form(ISSUE, issue.name)
+	try:
+		frappe.sendmail(
+			subject="[{0}] New report: {1}".format(desk["label"], issue.name),
+			recipients=recipients,
+			message=(
+				"<p><b>{name}</b></p><ul>"
+				"<li><b>{desk}</b></li>"
+				"<li>{station}</li>"
+				"<li>{what}</li>"
+				"<li>{urgency}</li>"
+				"</ul><p><a href=\"{link}\">Open the ticket</a></p>"
+			).format(
+				name=frappe.utils.escape_html(issue.name),
+				desk=frappe.utils.escape_html(desk["label"]),
+				station=frappe.utils.escape_html(station or ""),
+				what=frappe.utils.escape_html(issue.subject or ""),
+				urgency=frappe.utils.escape_html(urgency_label or ""),
+				link=link or "",
+			),
+			reference_doctype=ISSUE,
+			reference_name=issue.name,
+		)
+	except Exception:
+		_log_error("Solrise portal: email {0}".format(desk["key"]))
+	return recipients
+
+
 @frappe.whitelist()
-def create_issue(category=None, urgency=None, description=None, attachment=None, store=None, reporter=None):
+def create_issue(category=None, urgency=None, description=None, attachment=None, store=None, reporter=None, department=None):
 	"""Create an Issue from the report form.
 
 	Returns the new ticket's name, subject, priority and resolved category so the
 	page can confirm what was filed without a second round trip.
+
+	`department` is which desk the button came from - Maintenance, HR or IT /
+	Support. It decides the category list the report is validated against, who the
+	Issue is assigned to, and who is emailed. It is never trusted to be a person:
+	the recipients come from the catalogue, not from the request. See docs/17
+	section 15.
 
 	`store` is only consulted when the caller is linked to more than one store, and
 	even then it must name one of *their* stores - the form is never trusted to say
@@ -250,7 +359,8 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 		frappe.throw(_("Please say what is wrong."), frappe.ValidationError)
 	user = _session_user()
 
-	chosen_category = catalog.category(category) or catalog.default_category()
+	desk = _desk(department, category)
+	chosen_category = _category_for_desk(desk, category)
 	chosen_urgency = catalog.urgency(urgency) or catalog.default_urgency()
 
 	customer, station = _resolve_store(user, store)
@@ -266,7 +376,17 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 	meta = frappe.get_meta(ISSUE)
 	doc = frappe.new_doc(ISSUE)
 	doc.subject = _subject(chosen_category["label"], station, person)
-	doc.description = _description_html(chosen_category["label"], chosen_urgency["label"], note, reporter)
+	doc.description = _description_html(
+		chosen_category["label"],
+		chosen_urgency["label"],
+		note,
+		reporter,
+		desk["label"],
+	)
+	# The desk, on the record itself: it is what the two rules that must not touch
+	# a portal report key off (`solrise_department`), and what a manager filters by.
+	if meta.has_field(DEPARTMENT_FIELD):
+		doc.set(DEPARTMENT_FIELD, desk["label"])
 	# `_safe_priority` answers None when the field's values are not available on
 	# this site, which is not the same as "set it to nothing".
 	priority = _safe_priority(chosen_urgency.get("priority"))
@@ -284,6 +404,11 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 	# the customer who reported it.
 	doc.insert()
 
+	# Route it, then tell the desk. Both are best-effort: the report is stored, and
+	# losing it over a bad recipient would be worse than a late email.
+	assignees = _assign_desk(doc, desk)
+	notified = _email_desk(doc, desk, station, chosen_urgency["label"])
+
 	return {
 		"name": doc.name,
 		"subject": doc.subject,
@@ -293,6 +418,10 @@ def create_issue(category=None, urgency=None, description=None, attachment=None,
 		"reporter": reporter,
 		"customer": customer,
 		"store": customer,
+		"department": desk["key"],
+		"department_label": desk["label"],
+		"assignees": assignees,
+		"notified": notified,
 		"photo": _attach_photo(attachment, doc),
 	}
 

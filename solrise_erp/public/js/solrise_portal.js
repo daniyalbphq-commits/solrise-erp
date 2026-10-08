@@ -368,6 +368,7 @@
 			}
 
 			var args = {
+				department: value_of("sl-department"),
 				category: value_of("sl-category"),
 				urgency: value_of("sl-urgency"),
 				description: description,

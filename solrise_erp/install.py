@@ -285,7 +285,10 @@ def apply_all():
 		"settings_defaults": [],
 		"faq_seed": None,
 		"portal_permissions": [],
+		"department_field": None,
 		"support_routing": None,
+		"department_routing": None,
+		"notification_scope": None,
 		"maintenance_workspace": None,
 	}
 
@@ -320,10 +323,15 @@ def apply_all():
 
 	try:
 		# The Desk surface a maintenance manager needs: reports routed to somebody who
-		# can work them, and a workspace to find them in (docs/19).
+		# can work them, and a workspace to find them in (docs/19). The department
+		# field and condition are what keep a *customer portal* report out of that
+		# rotation: the portal routes and emails those itself, by desk.
 		from solrise_erp import desk
 
+		summary["department_field"] = desk.ensure_issue_department_field()
 		summary["support_routing"] = desk.ensure_support_routing()
+		summary["department_routing"] = desk.ensure_department_routing()
+		summary["notification_scope"] = desk.ensure_notification_scope()
 		summary["maintenance_workspace"] = desk.ensure_maintenance_workspace()
 	except Exception:
 		_log_error("Solrise install: maintenance desk surface")

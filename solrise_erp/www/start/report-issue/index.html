@@ -22,6 +22,10 @@
 
 	<form class="sl-form" id="sl-report" novalidate>
 
+		{# Which desk this report goes to. The buttons below are that desk's, and
+		   the server assigns and emails on this value - never on the category alone. #}
+		<input type="hidden" id="sl-department" name="department" value="{{ department }}">
+
 		{% if store_count > 1 %}
 		{# Asked only of a manager who covers several sites; everyone else never sees
 		   it, and the server falls back to their single store when it is absent. #}

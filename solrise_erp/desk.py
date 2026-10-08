@@ -26,6 +26,24 @@ WORKSPACE = "Solrise Maintenance"
 MODULE = "Solrise ERP"
 ASSIGNMENT_RULE = "Solrise Support Routing"
 
+#: The Custom Field the portal stamps with the desk a report came from
+#: (`api.portal.DEPARTMENT_FIELD`). Only a customer portal report carries it.
+DEPARTMENT_FIELD = "solrise_department"
+
+#: The rule's condition once that field exists. The shipped fixture is
+#: `status == 'Open'`; the guard keeps the rotation for reports raised *in the
+#: Desk* while leaving a customer's report to the desk it was sent to, because
+#: the portal assigns and emails those itself (docs/17 section 15).
+ASSIGN_CONDITION = "status == 'Open' and not solrise_department"
+
+#: The Desk-facing notification that tells the support role about a new Issue.
+NOTIFICATION = "Solrise New Ticket"
+
+#: Its condition once the department field exists: a portal report is emailed by
+#: the portal, to the desk it was sent to, so this one must skip it.
+NOTIFY_CONDITION = "not doc.solrise_department"
+
+
 #: Role holders who should be in the assignment rotation.
 SUPPORT_ROLES = ("Support Manager", "Support Agent")
 
@@ -144,6 +162,91 @@ def ensure_support_routing():
 		return sorted(final)
 	except Exception:
 		_log_error("Solrise desk: ensure_support_routing")
+		return None
+
+
+def ensure_issue_department_field():
+	"""Create the `Issue.solrise_department` Custom Field; return its name.
+
+	Created in code rather than shipped as a fixture so it exists on every site the
+	app runs on, and so the Select options stay in step with the catalogue.
+	"""
+	try:
+		if not frappe.db.exists("DocType", "Issue"):
+			return None
+		name = "Issue-{0}".format(DEPARTMENT_FIELD)
+		if frappe.db.exists("Custom Field", name):
+			return name
+
+		from solrise_erp.portal import catalog
+
+		doc = frappe.new_doc("Custom Field")
+		doc.dt = "Issue"
+		doc.fieldname = DEPARTMENT_FIELD
+		doc.label = "Department"
+		doc.fieldtype = "Select"
+		doc.options = "\n".join(entry["label"] for entry in catalog.DEPARTMENTS)
+		doc.insert_after = "via_customer_portal"
+		doc.read_only = 1
+		doc.description = "Which desk a customer portal report was sent to."
+		doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+		frappe.logger().info("desk: custom field %s created", name)
+		return name
+	except Exception:
+		_log_error("Solrise desk: ensure_issue_department_field")
+		return None
+
+
+def ensure_department_routing():
+	"""Keep customer portal reports out of the shared support rotation.
+
+	Returns the condition it set, or `None` when it was already right. The portal
+	assigns a report to its own desk and emails that desk, so the Assignment Rule
+	must not also hand an HR report to the maintenance rotation - it is excluded by
+	`solrise_department`, which only a portal report carries.
+	"""
+	try:
+		if not frappe.db.exists("Assignment Rule", ASSIGNMENT_RULE):
+			return None
+		if not frappe.get_meta("Issue").has_field(DEPARTMENT_FIELD):
+			return None
+		rule = frappe.get_doc("Assignment Rule", ASSIGNMENT_RULE)
+		if (rule.assign_condition or "").strip() == ASSIGN_CONDITION:
+			return None
+		rule.assign_condition = ASSIGN_CONDITION
+		rule.save(ignore_permissions=True)
+		frappe.db.commit()
+		frappe.logger().info("desk: assignment condition -> %s", ASSIGN_CONDITION)
+		return ASSIGN_CONDITION
+	except Exception:
+		_log_error("Solrise desk: ensure_department_routing")
+		return None
+
+
+def ensure_notification_scope():
+	"""Keep the new-ticket notification off customer portal reports.
+
+	`Solrise New Ticket` addresses the `Support Manager` role. That is right for a
+	report raised in the Desk, but a customer portal report is emailed by the portal
+	to the desk it was sent to - so without this guard an HR report would land in
+	the maintenance inbox as well. Returns the condition it set, or `None`.
+	"""
+	try:
+		if not frappe.db.exists("Notification", NOTIFICATION):
+			return None
+		if not frappe.get_meta("Issue").has_field(DEPARTMENT_FIELD):
+			return None
+		doc = frappe.get_doc("Notification", NOTIFICATION)
+		if (doc.condition or "").strip() == NOTIFY_CONDITION:
+			return None
+		doc.condition = NOTIFY_CONDITION
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+		frappe.logger().info("desk: %s condition -> %s", NOTIFICATION, NOTIFY_CONDITION)
+		return NOTIFY_CONDITION
+	except Exception:
+		_log_error("Solrise desk: ensure_notification_scope")
 		return None
 
 

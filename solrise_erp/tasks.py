@@ -46,7 +46,7 @@ ALERT_BATCH_SIZE = 25
 # Fields read from an Issue, filtered against the installed version's meta.
 ISSUE_CANDIDATE_FIELDS = (
 	"name", "subject", "status", "priority", "owner", "_assign", "modified",
-	"resolution_by", "agreement_status",
+	"resolution_by", "agreement_status", "solrise_department",
 )
 
 # (doctype, Solrise Settings retention field, default days)
@@ -138,6 +138,24 @@ def _issue_fields():
 	except Exception:
 		_log_error("Solrise task: Issue meta")
 		return ["name"]
+
+
+def _maintenance_only(issues):
+	"""Drop the desk-routed reports: an HR report is not the maintenance desk's.
+
+	A customer portal report carries `solrise_department`; one raised in the Desk
+	does not, and stays in these alerts. Filtered here rather than in SQL because
+	the field is NULL for Desk reports, and `NULL IN (...)` matches nothing.
+	"""
+	try:
+		if not frappe.get_meta(ISSUE).has_field("solrise_department"):
+			return issues
+	except Exception:
+		return issues
+	return [
+		row for row in issues
+		if not row.get("solrise_department") or row.get("solrise_department") == "Maintenance"
+	]
 
 
 def _text(value):
@@ -293,6 +311,7 @@ def check_sla_breaches():
 			return
 
 		issues = _collect_breached_issues(meta, {"status": ["not in", CLOSED_STATUSES]})
+		issues = _maintenance_only(issues)
 		if not issues:
 			return
 
@@ -333,6 +352,9 @@ def escalate_stale_tickets():
 			order_by="modified asc",
 			limit_page_length=ALERT_BATCH_SIZE,
 		)
+		if not issues:
+			return
+		issues = _maintenance_only(issues)
 		if not issues:
 			return
 

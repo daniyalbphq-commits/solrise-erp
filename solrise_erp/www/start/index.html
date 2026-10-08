@@ -32,7 +32,7 @@
 
 	<nav class="sl-tiles" aria-label="{{ _('What do you need?') }}">
 		{% for tile in tiles %}
-		<a class="sl-tile" href="{{ tile.route }}">
+		<a class="sl-tile" href="{{ tile.route }}{% if tile.department %}?department={{ tile.department }}{% endif %}">
 			<span class="sl-tile__icon" aria-hidden="true">{{ tile.icon }}</span>
 			<span class="sl-tile__label">{{ _(tile.label) }}</span>
 			{% if tile.caption %}
