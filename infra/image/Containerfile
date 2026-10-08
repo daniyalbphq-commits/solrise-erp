@@ -50,10 +50,18 @@ RUN /home/frappe/frappe-bench/env/bin/python -c \
 # assets/. nginx serves /assets from there, so without this the widget's JS and
 # the logo answer 404 even though the app is installed and running. Do what bench
 # does for the apps it does know about: register the app, then link it.
-RUN cd /home/frappe/frappe-bench \
-      && { grep -qx solrise_erp sites/apps.txt || echo solrise_erp >> sites/apps.txt; } \
-      && chown frappe:frappe sites/apps.txt \
-      && ln -sfn /home/frappe/frappe-bench/apps/solrise_erp/solrise_erp/public assets/solrise_erp \
-      && test -f assets/solrise_erp/js/solrise_chat.js
+#
+# `chown frappe` names the **user only, never a group**. frappe_docker's base
+# images moved the bench tree to group 0 and no longer define a `frappe` group
+# (`getent group frappe` is empty; the `frappe` user is uid 1000, gid 0), so
+# `chown frappe:frappe` fails with "invalid group: frappe" and takes the whole
+# build down with it - which is how this step once turned red with nothing
+# changed on our side. `set -ex` so a failure here names the command in the log.
+RUN set -ex; \
+    cd /home/frappe/frappe-bench; \
+    grep -qx solrise_erp sites/apps.txt 2>/dev/null || echo solrise_erp >> sites/apps.txt; \
+    chown frappe sites/apps.txt; \
+    ln -sfn /home/frappe/frappe-bench/apps/solrise_erp/solrise_erp/public assets/solrise_erp; \
+    test -f assets/solrise_erp/js/solrise_chat.js
 
 USER frappe

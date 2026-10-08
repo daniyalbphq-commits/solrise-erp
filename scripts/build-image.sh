@@ -32,9 +32,21 @@ case "${FD_DIR}" in
   *) FD_DIR="${ROOT_DIR}/${FD_DIR#./}" ;;
 esac
 
+# frappe_docker is PINNED. It used to be cloned at HEAD, so an upstream commit
+# could change the Containerfile the build runs - which is exactly how a green
+# build turned red overnight with nothing changed on this side. Bump
+# FRAPPE_DOCKER_REF deliberately; override it (branch, tag or commit) to track a
+# different revision.
+FRAPPE_DOCKER_REF="${FRAPPE_DOCKER_REF:-e08b50ca057139c6e8c9117838ee3f5c5ee64a37}"
+FRAPPE_DOCKER_URL="${FRAPPE_DOCKER_URL:-https://github.com/frappe/frappe_docker}"
 if [ ! -f "${FD_DIR}/images/layered/Containerfile" ]; then
-  echo "[solrise] cloning frappe_docker into ${FD_DIR}"
-  git clone --depth 1 https://github.com/frappe/frappe_docker "${FD_DIR}"
+  echo "[solrise] cloning frappe_docker ${FRAPPE_DOCKER_REF} into ${FD_DIR}"
+  git clone --quiet --depth 1 "${FRAPPE_DOCKER_URL}" "${FD_DIR}"
+  if [ -n "${FRAPPE_DOCKER_REF}" ]; then
+    # `git clone --branch` cannot take a commit, so fetch the pinned revision.
+    git -C "${FD_DIR}" fetch --quiet --depth 1 origin "${FRAPPE_DOCKER_REF}"
+    git -C "${FD_DIR}" checkout --quiet FETCH_HEAD
+  fi
 fi
 
 # The app list comes from apps.json on disk, never inline in .env: a

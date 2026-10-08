@@ -740,3 +740,19 @@ serves `200 text/css`; `ping` is `200`.
   breach alerts never sent at all - a silent failure, found only by reading the
   `Email Queue` / `Notification Log` subjects. `_issue_fields()` now always keeps
   `name`, and `verify_app_layer.py` gates it.
+* **The build depended on a group the base image no longer defines.** Our
+  asset-linking `RUN` did `chown frappe:frappe sites/apps.txt`. frappe_docker's
+  base images moved the bench tree to group 0 - `getent group frappe` is now
+  empty and the `frappe` user is `uid 1000, gid 0` - so the group name became
+  invalid and the step died with `invalid group: frappe`, taking the whole build
+  with it. **Nothing on our side had changed since the last green build**: the
+  base image had. `chown frappe` (the *user* only, never a group) is
+  base-agnostic, and the step now runs under `set -ex` so a failure names the
+  command instead of quoting the whole block.
+* **`frappe_docker` was cloned at HEAD, so CI drifted under us.**
+  `scripts/build-image.sh` cloned it unpinned and the build ran whatever
+  Containerfile HEAD happened to hold. `FRAPPE_DOCKER_REF` now pins it to a
+  commit (`e08b50c`); bump it deliberately, or override it to track a branch.
+  The base *images* (`frappe/base:version-15`) are still moving Docker Hub tags -
+  that is what dropped the `frappe` group - so our layer must not assume anything
+  about them.
