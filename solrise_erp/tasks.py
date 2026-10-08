@@ -119,11 +119,22 @@ def _support_manager_recipients():
 
 
 def _issue_fields():
-	"""The Issue fields this module reads, minus the ones this version lacks."""
+	"""The Issue fields this module reads, minus the ones this version lacks.
+
+	`name` is always included. It is a **virtual** field, so `meta.has_field("name")`
+	is False and filtering it out left every alert without the ticket it was about:
+	the subject read `... idle for 3 days: None`, the link was empty,
+	`_stamp_breached` wrote to `None`, and `_collect_breached_issues` deduplicated
+	on `None` - so SLA breach alerts never went out at all. `verify_app_layer.py`
+	now asserts this.
+	"""
 	try:
 		meta = frappe.get_meta(ISSUE)
-		fields = [field for field in ISSUE_CANDIDATE_FIELDS if meta.has_field(field)]
-		return fields or ["name"]
+		optional = [
+			field for field in ISSUE_CANDIDATE_FIELDS
+			if field != "name" and meta.has_field(field)
+		]
+		return ["name"] + optional
 	except Exception:
 		_log_error("Solrise task: Issue meta")
 		return ["name"]
