@@ -105,8 +105,20 @@ def ensure_vendor(row):
 		if not frappe.get_meta("Vendor").has_field(field):
 			continue
 		value = (row.get(field) or "").strip()
+		if not value:
+			continue
+		if field == "email" and "@" not in value:
+			# The sheet sometimes holds a website where an e-mail is expected
+			# (``order.sumitbeverage.com``). Keep it, but out of the validated
+			# field - Frappe would otherwise refuse the whole vendor.
+			note = vendor.get("notes") or ""
+			line = "E-mail in source: %s" % value
+			if line not in note:
+				vendor.set("notes", (note + "\n" + line).strip())
+				changed = True
+			continue
 		# Only ever fill blanks: an operator's edit must survive a re-run.
-		if value and not vendor.get(field):
+		if not vendor.get(field):
 			vendor.set(field, value)
 			changed = True
 
