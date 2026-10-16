@@ -270,43 +270,43 @@ def check_support_alerts():
 
 
 def check_vendors():
-	"""The vendor master and the per-store vendor table (docs/20).
+    """The vendor master and the per-store vendor table (docs/20).
 
-	`Vendor` is a custom DocType, deliberately not ERPNext's `Supplier`, and each
-	store carries the vendors it uses in a `Customer.service_vendors` child table.
-	The DocTypes and the custom field are created by
-	`solrise_erp.vendors.ensure_all()` on migrate, so a missing one means the
-	vendor layer never applied.
-	"""
-	print("vendor management:")
-	for doctype in ("Vendor", "Vendor Category", "Store Vendor"):
-		check(f"DocType {doctype!r}", frappe.db.exists("DocType", doctype))
+    `Vendor` is a custom DocType, deliberately not ERPNext's `Supplier`, and each
+    store carries the vendors it uses in a `Customer.service_vendors` child table.
+    The DocTypes and the custom field are created by
+    `solrise_erp.vendors.ensure_all()` on migrate, so a missing one means the
+    vendor layer never applied.
+    """
+    print("vendor management:")
+    for doctype in ("Vendor", "Vendor Category", "Store Vendor"):
+        check(f"DocType {doctype!r}", frappe.db.exists("DocType", doctype))
 
-	check(
-		"Customer.service_vendors field",
-		field_exists("Customer", "service_vendors"),
-		"the child table that lists a store's vendors",
-	)
+    check(
+        "Customer.service_vendors field",
+        field_exists("Customer", "service_vendors"),
+        "the child table that lists a store's vendors",
+    )
 
-	vendors = count("Vendor") if frappe.db.exists("DocType", "Vendor") else None
-	if vendors is None:
-		warn("vendor master", "Vendor DocType not found")
-	elif vendors == 0:
-		warn("vendor master", "no vendors yet - run scripts/import_vendors.sh")
-	else:
-		ok("vendor master", f"{vendors} vendor(s)")
+    vendors = count("Vendor") if frappe.db.exists("DocType", "Vendor") else None
+    if vendors is None:
+        warn("vendor master", "Vendor DocType not found")
+    elif vendors == 0:
+        warn("vendor master", "no vendors yet - run scripts/import_vendors.sh")
+    else:
+        ok("vendor master", f"{vendors} vendor(s)")
 
-	categories = count("Vendor Category") if frappe.db.exists("DocType", "Vendor Category") else None
-	if categories:
-		ok("vendor categories", f"{categories} defined")
+    categories = count("Vendor Category") if frappe.db.exists("DocType", "Vendor Category") else None
+    if categories:
+        ok("vendor categories", f"{categories} defined")
 
-	# A store listing at least one vendor is the point of the feature: the table is
-	# what the operator opens the Customer to read.
-	linked = count("Store Vendor") or 0
-	if linked:
-		ok("store vendor links", f"{linked} link(s)")
-	elif vendors:
-		warn("store vendor links", "no store lists a vendor - run scripts/import_vendors.sh")
+    # A store listing at least one vendor is the point of the feature: the table is
+    # what the operator opens the Customer to read.
+    linked = count("Store Vendor") or 0
+    if linked:
+        ok("store vendor links", f"{linked} link(s)")
+    elif vendors:
+        warn("store vendor links", "no store lists a vendor - run scripts/import_vendors.sh")
 
 
 def main():
@@ -319,9 +319,9 @@ def main():
         check_branding()
         check_app_configuration()
         check_entry_points()
-        		check_configuration_artifacts()
-        		check_support_alerts()
-        		check_vendors()
+        check_configuration_artifacts()
+        check_support_alerts()
+        check_vendors()
     finally:
         frappe.destroy()
 
