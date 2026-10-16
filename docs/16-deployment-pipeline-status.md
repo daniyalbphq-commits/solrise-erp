@@ -533,6 +533,29 @@ Verified live: `/start` offers `Maintenance`, `HR` and `IT / Support`, opening
 > probes with a real SMTP send and rolls back on failure). Re-run it once the
 > credentials are right - the default is already `support@` (docs/19 section 6).
 
+### 5.10 Vendor management, and which store uses which vendor (2026-10-17)
+
+The operator's AP workbook is now loaded as a **custom `Vendor` master** -
+deliberately not ERPNext's `Supplier`, which needs an accounts-payable ledger this
+deployment does not have - plus a **`Store Vendor` child table on `Customer`**, so
+opening a store lists the vendors it buys from with that store's own account
+number and terms.
+
+* App revision `6573b58`, image built by CI run **22** (main `1d615b95`).
+* 72 vendors, 432 store links across 36 stores, 10 seeded categories.
+* `solrise_erp.vendors.ensure_all()` creates the categories, the
+  `Customer.service_vendors` custom field and a `Solrise Vendors` workspace on
+  every migrate; `verify_app_layer.py` (`check_vendors`) gates them.
+* Two vendor rows carried a website where an e-mail was expected
+  (`order.sumitbeverage.com`); Frappe's e-mail validation rejected the whole
+  record, so the importer now keeps such a value out of the validated field and
+  records it in the vendor's notes instead.
+* Full write-up: docs/20-vendors.md.
+
+Verified live: `verify_app_layer.py` reports `72 vendor(s)`, `432 link(s)`, the
+DocTypes and the field; a re-run of `import_vendors.sh` is a no-op; `Solrise 51`
+opens with 18 vendors and `Solrise 53` with 3.
+
 ## 6. Open items
 
 1. ~~**The vault passphrase does not match the vault file.**~~ **Resolved 2026-10-01.**

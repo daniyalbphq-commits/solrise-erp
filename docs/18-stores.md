@@ -7,6 +7,9 @@ Read alongside [`docs/17-customer-portal.md`](17-customer-portal.md): the portal
 resolves a reporting user as Contact → Customer, so it is this data that makes a
 report say *which store it came from*.
 
+The vendors each store buys from hang off the same `Customer` - see
+[`docs/20-vendors.md`](20-vendors.md).
+
 | | |
 |---|---|
 | Source | "New Stores info.xlsx", `Sheet1`, 36 rows |
