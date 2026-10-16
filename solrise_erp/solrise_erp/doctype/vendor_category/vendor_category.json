@@ -1,0 +1,90 @@
+{
+	"allow_rename": 1,
+	"autoname": "field:category_name",
+	"creation": "2026-10-17 00:00:00.000000",
+	"doctype": "DocType",
+	"engine": "InnoDB",
+	"field_order": [
+		"category_name",
+		"enabled",
+		"description"
+	],
+	"fields": [
+		{
+			"fieldname": "category_name",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Category",
+			"reqd": 1,
+			"unique": 1
+		},
+		{
+			"default": "1",
+			"fieldname": "enabled",
+			"fieldtype": "Check",
+			"in_list_view": 1,
+			"label": "Enabled"
+		},
+		{
+			"fieldname": "description",
+			"fieldtype": "Small Text",
+			"label": "Description"
+		}
+	],
+	"index_web_pages_for_search": 0,
+	"links": [],
+	"modified": "2026-10-17 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Solrise ERP",
+	"name": "Vendor Category",
+	"naming_rule": "By fieldname",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"role": "All",
+			"read": 1,
+			"write": 0,
+			"create": 0,
+			"delete": 0,
+			"report": 0,
+			"export": 0,
+			"import": 0,
+			"print": 0,
+			"email": 0,
+			"share": 0,
+			"submit": 0
+		},
+		{
+			"role": "Solrise Admin",
+			"read": 1,
+			"write": 1,
+			"create": 1,
+			"delete": 1,
+			"report": 1,
+			"export": 1,
+			"import": 0,
+			"print": 0,
+			"email": 0,
+			"share": 0,
+			"submit": 0
+		},
+		{
+			"role": "System Manager",
+			"read": 1,
+			"write": 1,
+			"create": 1,
+			"delete": 1,
+			"report": 1,
+			"export": 1,
+			"import": 1,
+			"print": 0,
+			"email": 0,
+			"share": 0,
+			"submit": 0
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"title_field": "category_name",
+	"track_changes": 0
+}

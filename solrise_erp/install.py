@@ -290,6 +290,9 @@ def apply_all():
 		"department_routing": None,
 		"notification_scope": None,
 		"maintenance_workspace": None,
+		"vendor_categories": [],
+		"vendor_customer_field": None,
+		"vendor_workspace": None,
 	}
 
 	try:
@@ -335,6 +338,18 @@ def apply_all():
 		summary["maintenance_workspace"] = desk.ensure_maintenance_workspace()
 	except Exception:
 		_log_error("Solrise install: maintenance desk surface")
+
+	try:
+		# Vendor management (docs/20): the category list, the Customer child table that
+		# lists a store's vendors, and the workspace to find the master in.
+		from solrise_erp import vendors
+
+		vendor_summary = vendors.ensure_all()
+		summary["vendor_categories"] = vendor_summary.get("categories") or []
+		summary["vendor_customer_field"] = vendor_summary.get("customer_field")
+		summary["vendor_workspace"] = vendor_summary.get("workspace")
+	except Exception:
+		_log_error("Solrise install: vendor management")
 
 	frappe.logger().info("install: apply_all %s", summary)
 	return summary
