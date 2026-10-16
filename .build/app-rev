@@ -16,7 +16,19 @@
 # some other process rewrites underneath it.
 #
 #   branch                                     commit
-solrise_erp-app                                50723f85ba849fbff329664ceb1e538144c085e0
+solrise_erp-app                                6573b5844c497bbab63de2f9bf4de371fa9dbaf1
+
+# 2026-10-17  Vendor management. A custom `Vendor` DocType (deliberately not
+#             ERPNext's `Supplier`, which needs an accounts-payable ledger this
+#             deployment does not have), a `Vendor Category` master, and a
+#             `Store Vendor` child table attached to `Customer` so a store shows
+#             the vendors it buys from - with that store's own account number and
+#             terms. `vendor` is seeded from the operator's AP workbook.
+#             `solrise_erp.vendors.ensure_all()` creates the categories, the
+#             `Customer.service_vendors` custom field, and a `Solrise Vendors`
+#             workspace on every migrate; `verify_app_layer.py` gates it.
+#             docs/20-vendors.md.
+#
 
 # 2026-10-08  A curated routing rule is left alone. `desk.ensure_support_routing()`
 #             used to add every holder of a support role to the Assignment Rule,
